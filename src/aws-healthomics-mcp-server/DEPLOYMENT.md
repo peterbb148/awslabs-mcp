@@ -125,6 +125,75 @@ Recommended sequence:
 5. Monitor until `COMPLETED`.
 6. Review outputs in `output_uri` S3 prefix.
 
+## Live API Gateway and OAuth configuration snapshot
+
+The following configuration was reverse-engineered from the live AWS deployment on
+February 13, 2026.
+
+### API Gateway (HTTP API v2)
+
+- Region: `eu-west-1`
+- API name: `mcp-healthomics-api`
+- API ID: `osgs2j07zf`
+- API endpoint: `https://osgs2j07zf.execute-api.eu-west-1.amazonaws.com`
+- Stage: `stable` (`AutoDeploy=true`)
+- CORS:
+  - `AllowOrigins=["*"]`
+  - `AllowMethods=["GET","POST","OPTIONS"]`
+- Integration:
+  - Type: `AWS_PROXY` (Lambda proxy, payload format `2.0`)
+  - Integration method: `POST`
+  - Timeout: `30000` ms
+  - Target Lambda:
+    `arn:aws:lambda:eu-west-1:138681986447:function:mcp-healthomics-server`
+- Stage throttling:
+  - Burst limit: `500`
+  - Rate limit: `1000`
+- Stage access logs:
+  - Log group:
+    `arn:aws:logs:eu-west-1:138681986447:log-group:/aws/apigateway/mcp-healthomics`
+  - Detailed metrics: enabled
+- Custom domain mappings: none configured at capture time
+
+### API Gateway route authorization model
+
+JWT-protected routes:
+
+- `ANY /`
+- `ANY /{proxy+}`
+
+Public (no auth) routes:
+
+- `GET /.well-known/openid-configuration`
+- `GET /.well-known/oauth-authorization-server`
+- `GET /.well-known/{proxy+}`
+- `POST /register`
+- `ANY /callback`
+- `ANY /logout`
+
+### JWT authorizer
+
+- Authorizer name: `cognito_jwt`
+- Authorizer type: `JWT`
+- Identity source: `$request.header.Authorization`
+- Issuer:
+  `https://cognito-idp.eu-west-1.amazonaws.com/eu-west-1_FejeFJmNE`
+- Audience (app client ID): `6r52ekr37jn84nlusjgn6j7f8m`
+
+### Cognito app client used by API authorizer
+
+- User pool ID: `eu-west-1_FejeFJmNE`
+- Client name: `carlsberg-healthomics-users-app-client`
+- Client ID: `6r52ekr37jn84nlusjgn6j7f8m`
+- Allowed OAuth flow: `code` (authorization code)
+- Allowed OAuth scopes: `openid`, `profile`, `email`
+- Supported identity providers: `AzureAD`
+- Callback URLs:
+  - `https://chatgpt.com/connector_platform_oauth_redirect`
+  - `https://osgs2j07zf.execute-api.eu-west-1.amazonaws.com/stable/callback`
+- Logout URL:
+  - `https://osgs2j07zf.execute-api.eu-west-1.amazonaws.com/stable/logout`
+
 ## Common deployment failures
 
 1. `AccessDenied` on workflow/run creation:
@@ -137,4 +206,3 @@ Recommended sequence:
    Invalid S3 path format or missing bucket policy access.
 5. Region mismatch:
    HealthOmics region and referenced resources are incompatible.
-
