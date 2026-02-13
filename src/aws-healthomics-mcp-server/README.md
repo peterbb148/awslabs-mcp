@@ -2,6 +2,8 @@
 
 A Model Context Protocol (MCP) server that provides AI assistants with comprehensive access to AWS HealthOmics services for genomic workflow management, execution, and analysis.
 
+For workflow deployment steps, see [DEPLOYMENT.md](DEPLOYMENT.md).
+
 ## Overview
 
 AWS HealthOmics is a purpose-built service for storing, querying, and analyzing genomic, transcriptomic, and other omics data. This MCP server enables AI assistants to interact with HealthOmics workflows through natural language, making genomic data analysis more accessible and efficient.
