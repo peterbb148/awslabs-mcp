@@ -217,6 +217,14 @@ class MCPLambdaHandler:
                 if origin is None:
                     return {'type': 'string'}  # Default for unknown types
 
+                # Handle Optional/Union[T, None]
+                if origin is Union:
+                    args = [arg for arg in get_args(type_hint) if arg is not type(None)]
+                    if len(args) == 1:
+                        return get_type_schema(args[0])
+                    # Fallback for complex unions
+                    return {'type': 'string'}
+
                 # Handle Dict types
                 if origin is dict or origin is Dict:
                     args = get_args(type_hint)
@@ -240,6 +248,7 @@ class MCPLambdaHandler:
                 return {'type': 'string'}
 
             # Build properties from type hints
+            signature = inspect.signature(func)
             for param_name, param_type in hints.items():
                 param_schema = get_type_schema(param_type)
 
@@ -247,7 +256,10 @@ class MCPLambdaHandler:
                     param_schema['description'] = arg_descriptions[param_name]
 
                 properties[param_name] = param_schema
-                required.append(param_name)
+                # Only mark as required when there is no default value.
+                param = signature.parameters.get(param_name)
+                if param is not None and param.default is inspect._empty:
+                    required.append(param_name)
 
             # Create tool schema
             tool_schema = {
