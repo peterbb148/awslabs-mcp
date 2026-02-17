@@ -1042,6 +1042,89 @@ async def test_start_run_success():
 
 
 @pytest.mark.asyncio
+async def test_start_run_with_stringified_parameters():
+    """Test start_run parses stringified JSON parameters into an object."""
+    mock_ctx = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.start_run.return_value = {'id': 'run-12345', 'arn': 'arn:run', 'status': 'PENDING'}
+
+    with patch(
+        'awslabs.aws_healthomics_mcp_server.tools.workflow_execution.get_omics_client',
+        return_value=mock_client,
+    ):
+        await start_run(
+            mock_ctx,
+            workflow_id='wfl-12345',
+            role_arn='arn:aws:iam::123456789012:role/HealthOmicsRole',
+            name='test-run',
+            output_uri='s3://my-bucket/outputs/',
+            parameters='{"param1":"value1"}',
+            workflow_version_name=None,
+            storage_type='DYNAMIC',
+            storage_capacity=None,
+            cache_id=None,
+            cache_behavior=None,
+        )
+
+    mock_client.start_run.assert_called_once_with(
+        workflowId='wfl-12345',
+        roleArn='arn:aws:iam::123456789012:role/HealthOmicsRole',
+        name='test-run',
+        outputUri='s3://my-bucket/outputs/',
+        parameters={'param1': 'value1'},
+        storageType='DYNAMIC',
+    )
+
+
+@pytest.mark.asyncio
+async def test_start_run_with_invalid_stringified_parameters():
+    """Test start_run returns clear validation for invalid JSON strings."""
+    mock_ctx = AsyncMock()
+
+    with pytest.raises(ValueError, match='Invalid parameters JSON string'):
+        await start_run(
+            mock_ctx,
+            workflow_id='wfl-12345',
+            role_arn='arn:aws:iam::123456789012:role/HealthOmicsRole',
+            name='test-run',
+            output_uri='s3://my-bucket/outputs/',
+            parameters='{"param1":',
+            workflow_version_name=None,
+            storage_type='DYNAMIC',
+            storage_capacity=None,
+            cache_id=None,
+            cache_behavior=None,
+        )
+
+    mock_ctx.error.assert_called_once()
+    assert 'Invalid parameters JSON string' in mock_ctx.error.call_args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_start_run_with_non_object_parameters():
+    """Test start_run rejects parsed JSON values that are not objects."""
+    mock_ctx = AsyncMock()
+
+    with pytest.raises(ValueError, match='parameters must be an object/dictionary'):
+        await start_run(
+            mock_ctx,
+            workflow_id='wfl-12345',
+            role_arn='arn:aws:iam::123456789012:role/HealthOmicsRole',
+            name='test-run',
+            output_uri='s3://my-bucket/outputs/',
+            parameters='["a", "b"]',
+            workflow_version_name=None,
+            storage_type='DYNAMIC',
+            storage_capacity=None,
+            cache_id=None,
+            cache_behavior=None,
+        )
+
+    mock_ctx.error.assert_called_once()
+    assert 'parameters must be an object/dictionary' in mock_ctx.error.call_args[0][0]
+
+
+@pytest.mark.asyncio
 async def test_start_run_with_static_storage():
     """Test workflow run start with static storage."""
     # Mock response data
