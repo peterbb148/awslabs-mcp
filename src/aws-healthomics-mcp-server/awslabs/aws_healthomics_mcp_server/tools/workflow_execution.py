@@ -15,6 +15,7 @@
 """Workflow execution tools for the AWS HealthOmics MCP server."""
 
 import botocore.exceptions
+import json
 import os
 from awslabs.aws_healthomics_mcp_server.consts import (
     CACHE_BEHAVIORS,
@@ -231,6 +232,22 @@ async def start_run(
         logger.error(error_message)
         await ctx.error(error_message)
         raise
+
+    # Some MCP clients send nested objects as JSON strings.
+    if isinstance(parameters, str):
+        try:
+            parameters = json.loads(parameters)
+        except json.JSONDecodeError as e:
+            error_message = f'Invalid parameters JSON string: {str(e)}'
+            logger.error(error_message)
+            await ctx.error(error_message)
+            raise ValueError(error_message)
+
+    if parameters is not None and not isinstance(parameters, dict):
+        error_message = 'Invalid parameters type: parameters must be an object/dictionary'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise ValueError(error_message)
 
     params = {
         'workflowId': workflow_id,
