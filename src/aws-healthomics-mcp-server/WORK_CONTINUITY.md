@@ -23,20 +23,31 @@ Last updated: 2026-02-17
 
 ## Verified runtime behavior (latest validation)
 
-- `StartAHORun` with stringified `parameters` now succeeds through deployed Lambda path.
-- Validation run created and cancelled during test:
-  - Run ID: `7936295`
-  - Final status: `CANCELLED`
+- `StartAHORun` with stringified `parameters` succeeds through deployed Lambda path.
+- `SearchGenomicsFiles` contract is consistent in `tools/list`:
+  - `search_terms` is `array[string]` (not `string`)
+- `ListAHOReferences` now works via Lambda MCP path:
+  - `reference_store_id` is correctly required
+  - `ctx` is not exposed
+  - async tool execution returns real results (no coroutine text)
+  - no `FieldInfo` passthrough errors for optional params like `next_token`
+- Verified reference enumeration from store `7661842487`:
+  - Found 1 active reference (`hop_pseudomolecules_v1.1_p1_p2_special_organelles.fasta`)
+- `SearchGenomicsFiles` with `search_terms=["hop"]` returned:
+  - 1 S3 hit in `s3://crl-sandbox-data-bucket/Genomes/References/...`
+  - 1 HealthOmics reference-store hit for the same genome
 
 ## Current deployment reference
 
 - Lambda function: `mcp-healthomics-server` (eu-west-1)
 - Image tag deployed during latest validation:
-  - `138681986447.dkr.ecr.eu-west-1.amazonaws.com/awslabs/aws-healthomics-mcp-server:omics-full-fix-20260217-2002`
+  - `138681986447.dkr.ecr.eu-west-1.amazonaws.com/awslabs/aws-healthomics-mcp-server:omics-issue11-20260217-203915`
+- Required env var currently set:
+  - `GENOMICS_SEARCH_S3_BUCKETS=s3://crl-sandbox-data-bucket/`
 
 ## Resume workflow
 
-1. Merge PR #12.
-2. Build/push amd64 image from merged code.
-3. Update Lambda image and run smoke tests from `DEPLOYMENT.md`.
-4. For next bugfix branch, branch from latest custom baseline tag (or create a new baseline tag after merge).
+1. Push latest branch commit(s) to PR #12.
+2. Merge PR #12.
+3. Rebuild/push amd64 image from merged `main`.
+4. Update Lambda image and rerun smoke tests from `DEPLOYMENT.md`.

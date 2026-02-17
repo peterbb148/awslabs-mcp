@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 import functools
 import inspect
 import json
@@ -29,6 +30,8 @@ from awslabs.mcp_lambda_handler.types import (
 )
 from contextvars import ContextVar
 from enum import Enum
+from pydantic.fields import FieldInfo
+from pydantic_core import PydanticUndefined
 from typing import (
     Any,
     Callable,
@@ -247,9 +250,19 @@ class MCPLambdaHandler:
                 # Default for unknown complex types
                 return {'type': 'string'}
 
+            def is_mcp_context_param(param_name: str, param_type: Any) -> bool:
+                """Return True when the param is FastMCP context and should stay internal."""
+                if param_name != 'ctx':
+                    return False
+                type_name = getattr(param_type, '__name__', '')
+                return type_name == 'Context'
+
             # Build properties from type hints
             signature = inspect.signature(func)
             for param_name, param_type in hints.items():
+                if is_mcp_context_param(param_name, param_type):
+                    continue
+
                 param_schema = get_type_schema(param_type)
 
                 if param_name in arg_descriptions:
@@ -258,8 +271,11 @@ class MCPLambdaHandler:
                 properties[param_name] = param_schema
                 # Only mark as required when there is no default value.
                 param = signature.parameters.get(param_name)
-                if param is not None and param.default is inspect._empty:
-                    required.append(param_name)
+                if param is not None:
+                    if param.default is inspect._empty:
+                        required.append(param_name)
+                    elif isinstance(param.default, FieldInfo) and param.default.is_required():
+                        required.append(param_name)
 
             # Create tool schema
             tool_schema = {
@@ -438,6 +454,7 @@ class MCPLambdaHandler:
                     converted_args = {}
                     tool_func = self.tool_implementations[tool_name]
                     hints = get_type_hints(tool_func)
+                    signature = inspect.signature(tool_func)
 
                     for arg_name, arg_value in tool_args.items():
                         arg_type = hints.get(arg_name)
@@ -446,7 +463,23 @@ class MCPLambdaHandler:
                         else:
                             converted_args[arg_name] = arg_value
 
+                    # Internal FastMCP context is not provided by JSON-RPC callers.
+                    if 'ctx' in signature.parameters and 'ctx' not in converted_args:
+                        converted_args['ctx'] = None
+
+                    # Unwrap Pydantic Field defaults so call sites get plain values.
+                    for param_name, param in signature.parameters.items():
+                        if param_name in converted_args:
+                            continue
+                        if isinstance(param.default, FieldInfo):
+                            if param.default.default_factory is not None:
+                                converted_args[param_name] = param.default.default_factory()
+                            elif param.default.default is not PydanticUndefined:
+                                converted_args[param_name] = param.default.default
+
                     result = tool_func(**converted_args)
+                    if inspect.isawaitable(result):
+                        result = asyncio.run(result)
                     content = [TextContent(text=str(result)).model_dump()]
                     return self._create_success_response(
                         {'content': content}, request.id, session_id

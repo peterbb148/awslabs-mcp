@@ -14,9 +14,11 @@
 
 """Schema contract tests for vendored MCP Lambda handler."""
 
+import json
 from typing import List, Optional
 
 from awslabs.mcp_lambda_handler import MCPLambdaHandler
+from pydantic import Field
 
 
 def test_optional_list_is_exposed_as_array_and_not_required():
@@ -33,3 +35,49 @@ def test_optional_list_is_exposed_as_array_and_not_required():
     assert prop['type'] == 'array'
     assert prop['items']['type'] == 'string'
     assert 'search_terms' not in schema['required']
+
+
+def test_ctx_is_hidden_from_schema_and_async_tool_is_awaited():
+    """FastMCP ctx should not be in schema and async tools should execute fully."""
+    handler = MCPLambdaHandler('test-server')
+
+    class Context:
+        pass
+
+    @handler.tool()
+    async def list_aho_references(
+        ctx: Context,
+        reference_store_id: str = Field(..., description='Reference store ID'),
+        next_token: Optional[str] = Field(None, description='Pagination token'),
+    ) -> dict:
+        return {'referenceStoreId': reference_store_id, 'nextToken': next_token, 'ok': True}
+
+    schema = handler.tools['listAhoReferences']['inputSchema']
+    assert 'ctx' not in schema['properties']
+    assert 'ctx' not in schema['required']
+    assert 'reference_store_id' in schema['required']
+    assert 'next_token' not in schema['required']
+
+    event = {
+        'httpMethod': 'POST',
+        'headers': {'content-type': 'application/json'},
+        'body': json.dumps(
+            {
+                'jsonrpc': '2.0',
+                'id': 'call-1',
+                'method': 'tools/call',
+                'params': {
+                    'name': 'listAhoReferences',
+                    'arguments': {'reference_store_id': '7661842487'},
+                },
+            }
+        ),
+    }
+
+    response = handler.handle_request(event, context=None)
+    payload = json.loads(response['body'])
+    result_text = payload['result']['content'][0]['text']
+
+    assert 'coroutine object' not in result_text
+    assert "'referenceStoreId': '7661842487'" in result_text
+    assert "'nextToken': None" in result_text

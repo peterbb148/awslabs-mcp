@@ -148,6 +148,15 @@ After updating the image and Lambda function:
 4. Verify Lambda response is JSON-RPC (not `Runtime.InvalidEntrypoint`).
 5. Verify `StartAHORun` with `parameters` as JSON string creates a run (or returns a service-level error, not local validation failure).
 
+Additional HealthOmics search smoke checks:
+
+6. Run `tools/list` and verify:
+   - `SearchGenomicsFiles.inputSchema.properties.search_terms.type == "array"`
+   - `ListAHOReferences.inputSchema.required` includes `reference_store_id`
+   - `ListAHOReferences` does **not** expose `ctx`
+7. Run `tools/call` with `ListAHOReferences` and confirm it returns real reference data
+   (not a coroutine object and no `FieldInfo` validation errors).
+
 ## Build and deploy checklist (required)
 
 Use this exact sequence for containerized Lambda updates:
@@ -248,3 +257,9 @@ Public (no auth) routes:
    Invalid S3 path format or missing bucket policy access.
 6. Region mismatch:
    HealthOmics region and referenced resources are incompatible.
+7. `SearchGenomicsFiles` contract mismatch:
+   If `search_terms` is shown as `string` in `tools/list`, redeploy the latest image.
+8. `ListAHOReferences` fails with `ctx`/coroutine/`FieldInfo` errors:
+   Indicates an outdated Lambda MCP handler image; redeploy latest handler fixes.
+9. `SearchGenomicsFiles` fails immediately with "No S3 bucket paths configured":
+   Set `GENOMICS_SEARCH_S3_BUCKETS` (for example `s3://crl-sandbox-data-bucket/`).
