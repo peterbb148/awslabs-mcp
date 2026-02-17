@@ -263,3 +263,7 @@ Public (no auth) routes:
    Indicates an outdated Lambda MCP handler image; redeploy latest handler fixes.
 9. `SearchGenomicsFiles` fails immediately with "No S3 bucket paths configured":
    Set `GENOMICS_SEARCH_S3_BUCKETS` (for example `s3://crl-sandbox-data-bucket/`).
+10. `SearchGenomicsFiles` returns
+   "There is no current event loop in thread 'MainThread'":
+   Use a build that includes the Python 3.13 async-bridge fix in
+   `lambda_handler._run_async` (`asyncio.run(...)`).

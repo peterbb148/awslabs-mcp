@@ -36,12 +36,15 @@ Last updated: 2026-02-17
 - `SearchGenomicsFiles` with `search_terms=["hop"]` returned:
   - 1 S3 hit in `s3://crl-sandbox-data-bucket/Genomes/References/...`
   - 1 HealthOmics reference-store hit for the same genome
+- Python 3.13 event-loop regression fix applied:
+  - `lambda_handler._run_async` now uses `asyncio.run(...)`
+  - resolves `There is no current event loop in thread 'MainThread'`
 
 ## Current deployment reference
 
 - Lambda function: `mcp-healthomics-server` (eu-west-1)
 - Image tag deployed during latest validation:
-  - `138681986447.dkr.ecr.eu-west-1.amazonaws.com/awslabs/aws-healthomics-mcp-server:omics-issue11-20260217-203915`
+  - `138681986447.dkr.ecr.eu-west-1.amazonaws.com/awslabs/aws-healthomics-mcp-server:omics-issue11-20260217-204504`
 - Required env var currently set:
   - `GENOMICS_SEARCH_S3_BUCKETS=s3://crl-sandbox-data-bucket/`
 

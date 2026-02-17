@@ -378,7 +378,9 @@ _register_lambda_tool('PrepareAHOImportSources', prepare_aho_import_sources)
 # Helper to run async functions synchronously
 def _run_async(coro):
     """Run an async coroutine synchronously."""
-    return asyncio.get_event_loop().run_until_complete(coro)
+    # Python 3.11+/3.13 no longer guarantees a default loop in main thread.
+    # asyncio.run() safely creates and closes a loop per invocation.
+    return asyncio.run(coro)
 
 
 # ============================================================================
