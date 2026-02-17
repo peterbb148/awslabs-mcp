@@ -12,16 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tool implementations for the AWS HealthOmics MCP server."""
+"""Visualization modules for Gantt charts and SVG generation."""
 
-from awslabs.aws_healthomics_mcp_server.tools.codeconnections import (
-    create_codeconnection,
-    get_codeconnection,
-    list_codeconnections,
-)
+from awslabs.aws_healthomics_mcp_server.visualization.gantt_generator import GanttGenerator
+from awslabs.aws_healthomics_mcp_server.visualization.svg_builder import SVGBuilder
+
 
 __all__ = [
-    'create_codeconnection',
-    'get_codeconnection',
-    'list_codeconnections',
+    'GanttGenerator',
+    'SVGBuilder',
 ]

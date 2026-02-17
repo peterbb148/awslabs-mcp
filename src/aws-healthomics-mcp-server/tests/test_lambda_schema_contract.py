@@ -1,0 +1,83 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Schema contract tests for vendored MCP Lambda handler."""
+
+import json
+from typing import List, Optional
+
+from awslabs.mcp_lambda_handler import MCPLambdaHandler
+from pydantic import Field
+
+
+def test_optional_list_is_exposed_as_array_and_not_required():
+    """Optional list params should be represented as arrays in tool schema."""
+    handler = MCPLambdaHandler('test-server')
+
+    @handler.tool()
+    def search_genomics_files(search_terms: Optional[List[str]] = None) -> dict:
+        return {}
+
+    schema = handler.tools['searchGenomicsFiles']['inputSchema']
+    prop = schema['properties']['search_terms']
+
+    assert prop['type'] == 'array'
+    assert prop['items']['type'] == 'string'
+    assert 'search_terms' not in schema['required']
+
+
+def test_ctx_is_hidden_from_schema_and_async_tool_is_awaited():
+    """FastMCP ctx should not be in schema and async tools should execute fully."""
+    handler = MCPLambdaHandler('test-server')
+
+    class Context:
+        pass
+
+    @handler.tool()
+    async def list_aho_references(
+        ctx: Context,
+        reference_store_id: str = Field(..., description='Reference store ID'),
+        next_token: Optional[str] = Field(None, description='Pagination token'),
+    ) -> dict:
+        return {'referenceStoreId': reference_store_id, 'nextToken': next_token, 'ok': True}
+
+    schema = handler.tools['listAhoReferences']['inputSchema']
+    assert 'ctx' not in schema['properties']
+    assert 'ctx' not in schema['required']
+    assert 'reference_store_id' in schema['required']
+    assert 'next_token' not in schema['required']
+
+    event = {
+        'httpMethod': 'POST',
+        'headers': {'content-type': 'application/json'},
+        'body': json.dumps(
+            {
+                'jsonrpc': '2.0',
+                'id': 'call-1',
+                'method': 'tools/call',
+                'params': {
+                    'name': 'listAhoReferences',
+                    'arguments': {'reference_store_id': '7661842487'},
+                },
+            }
+        ),
+    }
+
+    response = handler.handle_request(event, context=None)
+    payload = json.loads(response['body'])
+    result_text = payload['result']['content'][0]['text']
+
+    assert 'coroutine object' not in result_text
+    assert "'referenceStoreId': '7661842487'" in result_text
+    assert "'nextToken': None" in result_text
