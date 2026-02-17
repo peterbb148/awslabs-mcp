@@ -49,6 +49,30 @@ async def test_search_genomics_files_normalizes_fieldinfo_defaults(mock_context)
     assert request.adhoc_s3_buckets is None
 
 
+@pytest.mark.asyncio
+async def test_search_genomics_files_accepts_legacy_string_search_terms(mock_context):
+    """Legacy clients may send search_terms as string; coerce to list for compatibility."""
+    fake_response = SimpleNamespace(
+        results=[],
+        total_found=0,
+        search_duration_ms=1,
+        storage_systems_searched=['s3'],
+        enhanced_response=None,
+    )
+    mock_orchestrator = SimpleNamespace(search=AsyncMock(return_value=fake_response))
+
+    with patch(
+        'awslabs.aws_healthomics_mcp_server.tools.genomics_file_search.'
+        'GenomicsSearchOrchestrator.from_environment',
+        return_value=mock_orchestrator,
+    ):
+        result = await search_genomics_files(mock_context, search_terms='hop, hg38')
+
+    assert result['total_found'] == 0
+    request = mock_orchestrator.search.call_args.args[0]
+    assert request.search_terms == ['hop', 'hg38']
+
+
 def test_lambda_wrapper_exposes_and_passes_adhoc_s3_buckets():
     """Lambda SearchGenomicsFiles wrapper should expose and pass adhoc bucket arg."""
     lambda_handler_path = (

@@ -158,9 +158,18 @@ async def search_genomics_files(
 
         if search_terms is None:
             search_terms = []
-        if not isinstance(search_terms, list):
+        elif isinstance(search_terms, str):
+            # Backward compatibility for clients with stale schema that still send a string.
+            normalized_terms = [term.strip() for term in search_terms.split(',') if term.strip()]
+            search_terms = normalized_terms
+        elif not isinstance(search_terms, list):
             return await handle_tool_error(
                 ctx, ValueError('search_terms must be a list of strings'), 'Invalid search terms'
+            )
+
+        if any(not isinstance(term, str) for term in search_terms):
+            return await handle_tool_error(
+                ctx, ValueError('search_terms must contain only strings'), 'Invalid search terms'
             )
         if adhoc_s3_buckets is not None and not isinstance(adhoc_s3_buckets, list):
             return await handle_tool_error(
