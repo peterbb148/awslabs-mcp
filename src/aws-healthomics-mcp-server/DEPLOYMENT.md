@@ -125,6 +125,46 @@ Recommended sequence:
 5. Monitor until `COMPLETED`.
 6. Review outputs in `output_uri` S3 prefix.
 
+## Lambda container requirements (API Gateway deployment)
+
+When deploying this MCP server behind API Gateway using containerized Lambda:
+
+1. Build from a Lambda runtime base image (`public.ecr.aws/lambda/python:*`), not SAM build images.
+2. Ensure image entrypoint remains Lambda default (`/lambda-entrypoint.sh`).
+3. Set Lambda handler command to:
+   `awslabs.aws_healthomics_mcp_server.lambda_handler.lambda_handler`
+4. Ensure `awslabs.mcp_lambda_handler` is installed in the image.
+
+If the image is built with a CLI-style `ENTRYPOINT`, Lambda will fail before request handling.
+
+## Post-deploy smoke tests
+
+After updating the image and Lambda function:
+
+1. Check function config:
+   `aws lambda get-function-configuration --function-name mcp-healthomics-server --region eu-west-1`
+2. Confirm `ImageConfigResponse.ImageConfig.Command` points to the handler above.
+3. Run a direct invoke with a `tools/call` payload for `StartAHORun`.
+4. Verify Lambda response is JSON-RPC (not `Runtime.InvalidEntrypoint`).
+5. Verify `StartAHORun` with `parameters` as JSON string creates a run (or returns a service-level error, not local validation failure).
+
+## Build and deploy checklist (required)
+
+Use this exact sequence for containerized Lambda updates:
+
+1. Build and push `amd64` image:
+   `docker buildx build --platform linux/amd64 -t <ECR_URI>:<TAG> --push src/aws-healthomics-mcp-server`
+2. Update Lambda:
+   `aws lambda update-function-code --function-name mcp-healthomics-server --region eu-west-1 --image-uri <ECR_URI>:<TAG>`
+3. Wait for completion:
+   `aws lambda wait function-updated --function-name mcp-healthomics-server --region eu-west-1`
+4. Verify handler command:
+   `aws lambda get-function-configuration --function-name mcp-healthomics-server --region eu-west-1 --query 'ImageConfigResponse.ImageConfig.Command'`
+5. Run smoke invoke using MCP `tools/call` payload and confirm:
+   - No `Runtime.InvalidEntrypoint`
+   - No `Runtime.ImportModuleError`
+   - Tool response is valid JSON-RPC
+
 ## Live API Gateway and OAuth configuration snapshot
 
 The following configuration was reverse-engineered from the live AWS deployment on
@@ -198,11 +238,13 @@ Public (no auth) routes:
 
 1. `AccessDenied` on workflow/run creation:
    Missing `omics:*` permissions or `iam:PassRole`.
-2. Role pass failure:
+2. `Runtime.InvalidEntrypoint` on Lambda invoke:
+   Container image was built with non-Lambda entrypoint or missing handler module.
+3. Role pass failure:
    Execution role trust/policies are incomplete.
-3. S3 definition URI errors:
+4. S3 definition URI errors:
    Bad path, missing object, or missing S3 permissions.
-4. Input/output URI issues:
+5. Input/output URI issues:
    Invalid S3 path format or missing bucket policy access.
-5. Region mismatch:
+6. Region mismatch:
    HealthOmics region and referenced resources are incompatible.

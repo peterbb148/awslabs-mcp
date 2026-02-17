@@ -12,16 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tool implementations for the AWS HealthOmics MCP server."""
+"""Analysis engine modules for cost analysis, instance recommendations, and task aggregation."""
 
-from awslabs.aws_healthomics_mcp_server.tools.codeconnections import (
-    create_codeconnection,
-    get_codeconnection,
-    list_codeconnections,
-)
+from awslabs.aws_healthomics_mcp_server.analysis.cost_analyzer import CostAnalyzer
+from awslabs.aws_healthomics_mcp_server.analysis.instance_recommender import InstanceRecommender
+from awslabs.aws_healthomics_mcp_server.analysis.pricing_cache import PricingCache
+from awslabs.aws_healthomics_mcp_server.analysis.task_aggregator import TaskAggregator
+
 
 __all__ = [
-    'create_codeconnection',
-    'get_codeconnection',
-    'list_codeconnections',
+    'CostAnalyzer',
+    'InstanceRecommender',
+    'PricingCache',
+    'TaskAggregator',
 ]
