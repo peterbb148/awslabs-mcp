@@ -706,3 +706,134 @@ async def tail_run_task_logs(
         }
     except Exception as e:
         return await handle_tool_error(ctx, e, f'Error tailing task logs for run {run_id}')
+
+
+async def get_run_summary(
+    ctx: Context,
+    run_id: str = Field(
+        ...,
+        description='ID of the run',
+    ),
+    include_recent_logs: bool = Field(
+        True,
+        description='Include recent merged run/task log excerpts',
+    ),
+    log_limit: int = Field(
+        50,
+        description='Maximum number of recent merged log events to include',
+        ge=1,
+        le=500,
+    ),
+) -> Dict[str, Any]:
+    """Return a one-call operational summary for a workflow run."""
+    if isinstance(include_recent_logs, FieldInfo):
+        include_recent_logs = True
+    if isinstance(log_limit, FieldInfo):
+        log_limit = 50
+
+    omics_client = get_omics_client()
+
+    try:
+        run = omics_client.get_run(id=run_id)
+
+        tasks: List[Dict[str, Any]] = []
+        next_token: Optional[str] = None
+        while True:
+            params: Dict[str, Any] = {'id': run_id, 'maxResults': 100}
+            if next_token:
+                params['startingToken'] = next_token
+            response = omics_client.list_run_tasks(**params)
+            tasks.extend(response.get('items', []))
+            next_token = response.get('nextToken')
+            if not next_token:
+                break
+
+        task_counts = {'PENDING': 0, 'RUNNING': 0, 'COMPLETED': 0, 'FAILED': 0, 'OTHER': 0}
+        active_task: Optional[Dict[str, Any]] = None
+        for task in tasks:
+            status = str(task.get('status', 'OTHER')).upper()
+            if status in task_counts:
+                task_counts[status] += 1
+            else:
+                task_counts['OTHER'] += 1
+            if active_task is None and status in {'RUNNING', 'STARTING', 'PENDING'}:
+                active_task = {'taskId': task.get('taskId'), 'name': task.get('name')}
+
+        start_time = run.get('startTime')
+        stop_time = run.get('stopTime')
+        duration_seconds: Optional[int] = None
+        if start_time and stop_time:
+            duration_seconds = int((stop_time - start_time).total_seconds())
+
+        log_excerpt: List[Dict[str, Any]] = []
+        recent_transitions: List[str] = []
+        latest_errors: List[str] = []
+        coarse_only = True
+        notes: List[str] = []
+
+        if include_recent_logs:
+            tail_result = await tail_run_task_logs(
+                ctx,
+                run_id=run_id,
+                limit=log_limit,
+                include_system_events=True,
+            )
+            if 'error' in tail_result:
+                notes.append(tail_result['error'])
+            else:
+                coarse_only = tail_result.get('diagnostics', {}).get('coarseOnly', False)
+                notes.extend(tail_result.get('diagnostics', {}).get('notes', []))
+
+                for event in tail_result.get('events', [])[:log_limit]:
+                    message = event.get('message', '')
+                    excerpt_item = {
+                        'timestamp': event.get('timestamp'),
+                        'source': event.get('source'),
+                        'message': message,
+                    }
+                    log_excerpt.append(excerpt_item)
+                    if len(recent_transitions) < 5:
+                        recent_transitions.append(message[:240])
+                    normalized = message.lower()
+                    if any(token in normalized for token in ['error', 'failed', 'exception']):
+                        latest_errors.append(message[:300])
+                        if len(latest_errors) >= 5:
+                            break
+
+        if not latest_errors and run.get('failureReason'):
+            latest_errors.append(str(run.get('failureReason')))
+
+        if run.get('status') in {'COMPLETED'}:
+            next_action = 'Review outputs and run metrics; no immediate action required.'
+        elif run.get('status') in {'FAILED', 'CANCELLED'}:
+            next_action = 'Inspect task and engine logs to identify root cause before retrying.'
+        elif active_task:
+            next_action = f'Run is active. Monitor current task {active_task.get("taskId")} for progress.'
+        else:
+            next_action = 'Monitor run status and task transitions.'
+
+        return {
+            'run': {
+                'id': run.get('id', run_id),
+                'name': run.get('name'),
+                'status': run.get('status'),
+                'workflowId': run.get('workflowId'),
+                'creationTime': run.get('creationTime').isoformat()
+                if run.get('creationTime')
+                else None,
+                'startTime': start_time.isoformat() if start_time else None,
+                'stopTime': stop_time.isoformat() if stop_time else None,
+                'durationSeconds': duration_seconds,
+            },
+            'taskCounts': task_counts,
+            'highlights': {
+                'recentTransitions': recent_transitions,
+                'activeTask': active_task,
+                'latestErrors': latest_errors,
+            },
+            'logExcerpt': log_excerpt,
+            'nextAction': next_action,
+            'diagnostics': {'coarseOnly': coarse_only, 'notes': notes},
+        }
+    except Exception as e:
+        return await handle_tool_error(ctx, e, f'Error summarizing run {run_id}')
