@@ -35,6 +35,7 @@ def test_server_has_required_tools():
         'CreateAHOWorkflowVersion',
         'ListAHOWorkflowVersions',
         'StartAHORun',
+        'CancelAHORun',
         'ListAHORuns',
         'GetAHORun',
         'ListAHORunTasks',

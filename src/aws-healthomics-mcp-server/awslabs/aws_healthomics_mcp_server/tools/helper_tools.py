@@ -70,6 +70,7 @@ Recommended sequence:
 4. Monitor with `GetAHORun` and `ListAHORunTasks` until terminal status.
 5. If `StartAHORun` fails due to wrapper-required fields that are not required by HealthOmics,
    report a connector contract bug and do not invent placeholders.
+6. If you need to stop an in-progress run, call `CancelAHORun` with the target `run_id`.
 """,
     'troubleshooting': """# Troubleshooting Guide
 

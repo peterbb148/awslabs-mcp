@@ -17,6 +17,7 @@
 import botocore.exceptions
 import pytest
 from awslabs.aws_healthomics_mcp_server.tools.workflow_execution import (
+    cancel_run,
     get_run,
     list_run_tasks,
     list_runs,
@@ -24,6 +25,41 @@ from awslabs.aws_healthomics_mcp_server.tools.workflow_execution import (
 )
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
+
+
+@pytest.mark.asyncio
+async def test_cancel_run_success():
+    """Test successful cancellation of a run."""
+    mock_ctx = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.cancel_run.return_value = {'id': 'run-12345', 'status': 'CANCELLED'}
+
+    with patch(
+        'awslabs.aws_healthomics_mcp_server.tools.workflow_execution.get_omics_client',
+        return_value=mock_client,
+    ):
+        result = await cancel_run(mock_ctx, run_id='run-12345')
+
+    mock_client.cancel_run.assert_called_once_with(id='run-12345')
+    assert result == {'id': 'run-12345', 'status': 'CANCELLED'}
+
+
+@pytest.mark.asyncio
+async def test_cancel_run_error():
+    """Test error handling while cancelling a run."""
+    mock_ctx = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.cancel_run.side_effect = Exception('Access denied')
+
+    with patch(
+        'awslabs.aws_healthomics_mcp_server.tools.workflow_execution.get_omics_client',
+        return_value=mock_client,
+    ):
+        result = await cancel_run(mock_ctx, run_id='run-12345')
+
+    assert 'error' in result
+    assert 'Error cancelling run run-12345: Access denied' in result['error']
+    mock_ctx.error.assert_called_once()
 
 
 @pytest.mark.asyncio

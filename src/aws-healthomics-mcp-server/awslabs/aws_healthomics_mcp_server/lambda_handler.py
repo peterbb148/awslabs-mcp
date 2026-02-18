@@ -678,6 +678,28 @@ def ListAHORuns(
 
 
 @mcp.tool()
+def CancelAHORun(run_id: str) -> Dict[str, Any]:
+    """Cancel a running or queued workflow run.
+
+    Args:
+        run_id: ID of the run to cancel
+
+    Returns:
+        Dictionary containing cancellation status details
+    """
+    from awslabs.aws_healthomics_mcp_server.tools.workflow_execution import cancel_run
+
+    async def _call():
+        class MockContext:
+            async def error(self, msg):
+                logger.error(msg)
+
+        return await cancel_run(MockContext(), run_id=run_id)
+
+    return _run_async(_call())
+
+
+@mcp.tool()
 def GetAHORun(run_id: str) -> Dict[str, Any]:
     """Get details about a specific run.
 

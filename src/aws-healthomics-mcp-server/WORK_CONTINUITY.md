@@ -1,12 +1,12 @@
 # Work Continuity Notes
 
-Last updated: 2026-02-18
+Last updated: 2026-02-18 (issue #16)
 
 ## Current source-control state
 
-- Branch: `codex/issue-14-readonly-tool-annotations`
+- Branch: `codex/issue-16-cancel-aho-run`
 - Local repo: `peterbb148/awslabs-mcp`
-- Open PR from this branch: none at the moment (next step is to open/update PR after push)
+- Open PR from this branch: pending creation after push
 
 ## Active/related GitHub issues
 
@@ -33,18 +33,18 @@ Last updated: 2026-02-18
    - Accepts stringified `parameters` JSON and converts to dict
    - Retries without optional `workflowVersionName/cacheId/cacheBehavior` when AWS reports
      missing workflow version or run cache (`ValidationException`/`ResourceNotFoundException`)
-5. Created issue to add run cancellation tool:
-   - `CancelAHORun` tracked in issue #16
+5. Implemented run cancellation tool (`CancelAHORun`) for MCP and Lambda paths:
+   - Added `cancel_run` in `tools/workflow_execution.py`
+   - Registered `CancelAHORun` in `server.py`
+   - Added Lambda wrapper method `CancelAHORun` in `lambda_handler.py`
+   - Updated manual docs and deployment guide
+   - Added tests for cancel behavior and schema/read-only hints
 
 ## Latest deployment state
 
 - Lambda function: `mcp-healthomics-server` (`eu-west-1`)
 - Latest image deployed:
-  - `138681986447.dkr.ecr.eu-west-1.amazonaws.com/awslabs/aws-healthomics-mcp-server:omics-issue14-start-run-compat-20260218-074546`
-- Prior image tags deployed during verification:
-  - `...:omics-issue14-docs-20260218-072416`
-  - `...:omics-issue14-manual-20260218-073257`
-  - `...:omics-issue14-start-run-compat-20260218-074350`
+  - `138681986447.dkr.ecr.eu-west-1.amazonaws.com/awslabs/aws-healthomics-mcp-server:omics-issue16-cancel-20260218-104713`
 
 ## Live runtime validations completed
 
@@ -71,4 +71,4 @@ Last updated: 2026-02-18
 1. Commit and push this branch.
 2. Open/update PR against `main`.
 3. Merge after review.
-4. Implement issue #16 (`CancelAHORun`) on a new branch after this PR is merged.
+4. Build/deploy this branch and verify `CancelAHORun` via `tools/list` and a live cancel call.

@@ -44,10 +44,11 @@ This MCP server provides tools for:
 ### Workflow Execution Tools
 
 1. **StartAHORun** - Start workflow runs with custom parameters and resource configuration
-2. **ListAHORuns** - List workflow runs with filtering by status and date ranges
-3. **GetAHORun** - Retrieve detailed run information including status and metadata
-4. **ListAHORunTasks** - List tasks for specific runs with status filtering
-5. **GetAHORunTask** - Get detailed information about specific workflow tasks
+2. **CancelAHORun** - Cancel running or queued workflow runs
+3. **ListAHORuns** - List workflow runs with filtering by status and date ranges
+4. **GetAHORun** - Retrieve detailed run information including status and metadata
+5. **ListAHORunTasks** - List tasks for specific runs with status filtering
+6. **GetAHORunTask** - Get detailed information about specific workflow tasks
 
 ### Analysis and Troubleshooting Tools
 
