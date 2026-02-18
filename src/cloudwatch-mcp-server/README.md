@@ -128,6 +128,13 @@ Please reference [AWS documentation](https://docs.aws.amazon.com/cli/v1/userguid
 
 Contributions are welcome! Please see the [CONTRIBUTING.md](https://github.com/awslabs/mcp/blob/main/CONTRIBUTING.md) in the monorepo root for guidelines.
 
+## Lambda/API Gateway Deployment Artifacts
+
+The `deploy/` folder contains CloudFormation templates for deploying this server behind API Gateway with Cognito OAuth for ChatGPT connector flows:
+
+- `deploy/cloudwatch-mcp-http-api.yaml` configures HTTP API routes, JWT authorizer, CORS, stage settings, and Lambda integration
+- `deploy/cloudwatch-mcp-cognito-app-client.yaml` configures a Cognito User Pool app client with authorization code + PKCE settings, ChatGPT callback URL, and API callback/logout URLs
+
 ## Feedback and Issues
 
 We value your feedback! Submit your feedback, feature requests and any bugs at [GitHub issues](https://github.com/awslabs/mcp/issues) with prefix `cloudwatch-mcp-server` in title.

@@ -1,0 +1,51 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Cognito app client for CloudWatch MCP ChatGPT connector.
+
+Parameters:
+  UserPoolId:
+    Type: String
+    Description: Cognito User Pool ID used by the CloudWatch MCP API JWT authorizer.
+  AppClientName:
+    Type: String
+    Default: cloudwatch-mcp-chatgpt-app-client
+  HostedUiDomain:
+    Type: String
+    Description: Cognito Hosted UI domain prefix (for example my-domain-prefix).
+  CallbackApiBaseUrl:
+    Type: String
+    Description: API base URL including stage (for example https://<api-id>.execute-api.<region>.amazonaws.com/stable).
+
+Resources:
+  CloudWatchMcpUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPoolId
+      ClientName: !Ref AppClientName
+      GenerateSecret: false
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthScopes:
+        - openid
+        - profile
+        - email
+      SupportedIdentityProviders:
+        - COGNITO
+      CallbackURLs:
+        - https://chatgpt.com/connector_platform_oauth_redirect
+        - !Sub ${CallbackApiBaseUrl}/callback
+      LogoutURLs:
+        - !Sub ${CallbackApiBaseUrl}/logout
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+
+Outputs:
+  UserPoolClientId:
+    Value: !Ref CloudWatchMcpUserPoolClient
+  IssuerUrl:
+    Value: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPoolId}
+  AuthorizationEndpoint:
+    Value: !Sub https://${HostedUiDomain}.auth.${AWS::Region}.amazoncognito.com/oauth2/authorize
+  TokenEndpoint:
+    Value: !Sub https://${HostedUiDomain}.auth.${AWS::Region}.amazoncognito.com/oauth2/token
