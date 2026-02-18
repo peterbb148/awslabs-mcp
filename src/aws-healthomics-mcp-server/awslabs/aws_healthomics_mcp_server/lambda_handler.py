@@ -960,6 +960,45 @@ def GetAHOTaskLogs(
 
 
 @mcp.tool()
+def TailAHORunTaskLogs(
+    run_id: str,
+    task_id: Optional[str] = None,
+    limit: int = 100,
+    since_seconds: Optional[int] = None,
+    include_system_events: bool = True,
+) -> Dict[str, Any]:
+    """Tail recent task and run logs for a workflow run.
+
+    Args:
+        run_id: ID of the run
+        task_id: Optional specific task ID to tail
+        limit: Maximum number of merged events to return
+        since_seconds: Optional lookback window in seconds
+        include_system_events: Include high-level run events
+
+    Returns:
+        Dictionary containing merged recent events and diagnostics
+    """
+    from awslabs.aws_healthomics_mcp_server.tools.workflow_analysis import tail_run_task_logs
+
+    async def _call():
+        class MockContext:
+            async def error(self, msg):
+                logger.error(msg)
+
+        return await tail_run_task_logs(
+            MockContext(),
+            run_id=run_id,
+            task_id=task_id,
+            limit=limit,
+            since_seconds=since_seconds,
+            include_system_events=include_system_events,
+        )
+
+    return _run_async(_call())
+
+
+@mcp.tool()
 def AnalyzeAHORunPerformance(run_ids: Union[List[str], str]) -> str:
     """Analyze workflow run performance and provide optimization recommendations.
 

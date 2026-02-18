@@ -264,6 +264,7 @@ class MCPLambdaHandler:
                     'list',
                     'get',
                     'search',
+                    'tail',
                     'count',
                     'check',
                     'validate',

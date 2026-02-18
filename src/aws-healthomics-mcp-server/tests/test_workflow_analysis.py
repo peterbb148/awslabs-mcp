@@ -27,6 +27,7 @@ from awslabs.aws_healthomics_mcp_server.tools.workflow_analysis import (
     get_run_logs,
     get_run_manifest_logs,
     get_task_logs,
+    tail_run_task_logs,
 )
 from botocore.exceptions import ClientError
 from mcp.server.fastmcp import Context
@@ -190,6 +191,60 @@ class TestGetRunLogs:
 
         # Verify error was reported to context
         mock_context.error.assert_called_once()
+
+
+@pytest.mark.asyncio
+@patch('awslabs.aws_healthomics_mcp_server.tools.workflow_analysis.get_logs_client')
+@patch('awslabs.aws_healthomics_mcp_server.tools.workflow_analysis.get_omics_client')
+@patch('awslabs.aws_healthomics_mcp_server.tools.workflow_analysis._get_logs_from_stream')
+async def test_tail_run_task_logs_success(
+    mock_get_logs_from_stream, mock_get_omics_client, mock_get_logs_client, mock_context
+):
+    """Tail tool should merge task and run events with workflow-native inputs."""
+    mock_get_logs_client.return_value = MagicMock()
+    mock_omics_client = MagicMock()
+    mock_get_omics_client.return_value = mock_omics_client
+
+    mock_omics_client.get_run.return_value = {'id': 'run-12345', 'status': 'RUNNING', 'workflowId': 'wf-1'}
+    mock_omics_client.list_run_tasks.return_value = {
+        'items': [{'taskId': 'task-1', 'name': 'StepA', 'status': 'RUNNING'}]
+    }
+    mock_get_logs_from_stream.side_effect = [
+        {'events': [{'timestamp': '2026-02-18T10:00:00Z', 'message': 'task event'}]},
+        {'events': [{'timestamp': '2026-02-18T10:00:01Z', 'message': 'run event'}]},
+    ]
+
+    result = await tail_run_task_logs(mock_context, run_id='run-12345', limit=20)
+
+    assert result['run']['status'] == 'RUNNING'
+    assert len(result['events']) == 2
+    assert result['events'][0]['source'] in {'run', 'task'}
+    assert result['diagnostics']['coarseOnly'] is False
+
+
+@pytest.mark.asyncio
+@patch('awslabs.aws_healthomics_mcp_server.tools.workflow_analysis.get_logs_client')
+@patch('awslabs.aws_healthomics_mcp_server.tools.workflow_analysis.get_omics_client')
+@patch('awslabs.aws_healthomics_mcp_server.tools.workflow_analysis._get_logs_from_stream')
+async def test_tail_run_task_logs_coarse_fallback(
+    mock_get_logs_from_stream, mock_get_omics_client, mock_get_logs_client, mock_context
+):
+    """Tail tool should degrade gracefully when detailed streams are unavailable."""
+    mock_get_logs_client.return_value = MagicMock()
+    mock_omics_client = MagicMock()
+    mock_get_omics_client.return_value = mock_omics_client
+
+    mock_omics_client.get_run.return_value = {'id': 'run-12345', 'status': 'RUNNING', 'workflowId': 'wf-1'}
+    mock_omics_client.list_run_tasks.return_value = {
+        'items': [{'taskId': 'task-1', 'name': 'StepA', 'status': 'RUNNING'}]
+    }
+    mock_get_logs_from_stream.side_effect = Exception('stream not found')
+
+    result = await tail_run_task_logs(mock_context, run_id='run-12345', include_system_events=False)
+
+    assert result['events'] == []
+    assert result['diagnostics']['coarseOnly'] is True
+    assert 'No detailed task logs were available' in result['diagnostics']['notes'][0]
 
 
 class TestGetRunManifestLogs:
