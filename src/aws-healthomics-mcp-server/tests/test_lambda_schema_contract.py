@@ -81,3 +81,22 @@ def test_ctx_is_hidden_from_schema_and_async_tool_is_awaited():
     assert 'coroutine object' not in result_text
     assert "'referenceStoreId': '7661842487'" in result_text
     assert "'nextToken': None" in result_text
+
+
+def test_readonly_hint_annotations_for_read_and_write_tools():
+    """Tool schemas should expose readOnlyHint for MCP client action gating."""
+    handler = MCPLambdaHandler('test-server')
+
+    @handler.tool()
+    def list_aho_workflows(max_results: int = 10) -> dict:
+        return {'max_results': max_results}
+
+    @handler.tool()
+    def start_aho_run(workflow_id: str) -> dict:
+        return {'workflow_id': workflow_id}
+
+    list_schema = handler.tools['listAhoWorkflows']
+    start_schema = handler.tools['startAhoRun']
+
+    assert list_schema['annotations']['readOnlyHint'] is True
+    assert start_schema['annotations']['readOnlyHint'] is False

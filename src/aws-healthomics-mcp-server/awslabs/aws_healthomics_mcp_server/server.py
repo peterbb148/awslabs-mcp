@@ -34,6 +34,7 @@ from awslabs.aws_healthomics_mcp_server.tools.genomics_file_search import (
     search_genomics_files,
 )
 from awslabs.aws_healthomics_mcp_server.tools.helper_tools import (
+    get_server_manual,
     get_supported_regions,
     package_workflow,
 )
@@ -163,6 +164,7 @@ This MCP server provides tools for creating, managing, and analyzing genomic wor
 ### Helper Tools
 - **PackageAHOWorkflow**: Package workflow definition files into a base64-encoded ZIP
 - **GetAHOSupportedRegions**: Get the list of AWS regions where HealthOmics is available
+- **GetAHOServerManual**: Return built-in HealthOmics MCP usage documentation as Markdown
 
 ### CodeConnections Management
 - **ListCodeConnections**: List available CodeConnections for use with HealthOmics workflows
@@ -258,6 +260,7 @@ mcp.tool(name='GetSupportedFileTypes')(get_supported_file_types)
 # Register helper tools
 mcp.tool(name='PackageAHOWorkflow')(package_workflow)
 mcp.tool(name='GetAHOSupportedRegions')(get_supported_regions)
+mcp.tool(name='GetAHOServerManual')(get_server_manual)
 
 # Register CodeConnections tools
 mcp.tool(name='ListCodeConnections')(list_codeconnections)

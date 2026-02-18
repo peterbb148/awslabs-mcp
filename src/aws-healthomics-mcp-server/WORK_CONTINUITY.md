@@ -1,56 +1,74 @@
 # Work Continuity Notes
 
-Last updated: 2026-02-17
+Last updated: 2026-02-18
 
 ## Current source-control state
 
-- Upstream sync baseline in fork: `main` at commit `bc2d6b0c`
-- Custom baseline tag for Healthomics fork layer:
-  - `healthomics-custom-baseline-2026-02-17`
-- Active bugfix branch:
-  - `codex/issue-11-searchgenomics-fieldinfo`
-- Active PR:
-  - https://github.com/peterbb148/awslabs-mcp/pull/12
-- Active issue:
-  - https://github.com/peterbb148/awslabs-mcp/issues/11
+- Branch: `codex/issue-14-readonly-tool-annotations`
+- Local repo: `peterbb148/awslabs-mcp`
+- Open PR from this branch: none at the moment (next step is to open/update PR after push)
 
-## What is documented where
+## Active/related GitHub issues
 
-- Fork strategy and layering rules:
-  - `src/aws-healthomics-mcp-server/CUSTOM_DELTA.md`
-- Deployment/runtime contract and smoke tests:
-  - `src/aws-healthomics-mcp-server/DEPLOYMENT.md`
+- Read-only tool annotation regression:
+  - https://github.com/peterbb148/awslabs-mcp/issues/14
+- Start run schema/placeholder normalization:
+  - https://github.com/peterbb148/awslabs-mcp/issues/15
+- Add cancel-run MCP method:
+  - https://github.com/peterbb148/awslabs-mcp/issues/16
 
-## Verified runtime behavior (latest validation)
+## What changed in this session
 
-- `StartAHORun` with stringified `parameters` succeeds through deployed Lambda path.
-- `SearchGenomicsFiles` contract is consistent in `tools/list`:
-  - `search_terms` is `array[string]` (not `string`)
-- `ListAHOReferences` now works via Lambda MCP path:
-  - `reference_store_id` is correctly required
-  - `ctx` is not exposed
-  - async tool execution returns real results (no coroutine text)
-  - no `FieldInfo` passthrough errors for optional params like `next_token`
-- Verified reference enumeration from store `7661842487`:
-  - Found 1 active reference (`hop_pseudomolecules_v1.1_p1_p2_special_organelles.fasta`)
-- `SearchGenomicsFiles` with `search_terms=["hop"]` returned:
-  - 1 S3 hit in `s3://crl-sandbox-data-bucket/Genomes/References/...`
-  - 1 HealthOmics reference-store hit for the same genome
-- Python 3.13 event-loop regression fix applied:
-  - `lambda_handler._run_async` now uses `asyncio.run(...)`
-  - resolves `There is no current event loop in thread 'MainThread'`
+1. Added MCP-callable server manual:
+   - Tool: `GetAHOServerManual`
+   - Returns Markdown from in-code templates (not filesystem reads)
+   - Registered in both `server.py` and Lambda wrapper
+2. Updated manual content to enforce MCP-native usage:
+   - Explicitly avoids AWS CLI fallback guidance for normal operations
+   - Adds MCP-only rerun sequence
+3. Diagnosed connector schema drift for `StartAHORun`:
+   - Some ChatGPT connector surfaces still report all-string required fields
+4. Added compatibility handling in `start_run`:
+   - Normalizes stale placeholder values (`"", "0", "null", "none"`)
+   - Accepts stringified `parameters` JSON and converts to dict
+   - Retries without optional `workflowVersionName/cacheId/cacheBehavior` when AWS reports
+     missing workflow version or run cache (`ValidationException`/`ResourceNotFoundException`)
+5. Created issue to add run cancellation tool:
+   - `CancelAHORun` tracked in issue #16
 
-## Current deployment reference
+## Latest deployment state
 
-- Lambda function: `mcp-healthomics-server` (eu-west-1)
-- Image tag deployed during latest validation:
-  - `138681986447.dkr.ecr.eu-west-1.amazonaws.com/awslabs/aws-healthomics-mcp-server:omics-issue11-20260217-204504`
-- Required env var currently set:
-  - `GENOMICS_SEARCH_S3_BUCKETS=s3://crl-sandbox-data-bucket/`
+- Lambda function: `mcp-healthomics-server` (`eu-west-1`)
+- Latest image deployed:
+  - `138681986447.dkr.ecr.eu-west-1.amazonaws.com/awslabs/aws-healthomics-mcp-server:omics-issue14-start-run-compat-20260218-074546`
+- Prior image tags deployed during verification:
+  - `...:omics-issue14-docs-20260218-072416`
+  - `...:omics-issue14-manual-20260218-073257`
+  - `...:omics-issue14-start-run-compat-20260218-074350`
+
+## Live runtime validations completed
+
+- `tools/list` exposes `GetAHOServerManual` with read-only annotation.
+- `GetAHOServerManual(section="all")` returns Markdown content.
+- `ListAHOWorkflows` executes successfully through deployed Lambda path.
+- `StartAHORun` works with minimal payload (no workflow version/cache required).
+- `StartAHORun` also works with stale all-string connector payload shape after compatibility fix.
+
+## Temporary validation runs started and canceled
+
+- `4930296` (compat validation): canceled.
+- `8587294` (stale-schema validation): canceled (was `STOPPING` on last check).
+- User-requested run `9533660` canceled via CLI (was `STOPPING` on last check).
+
+## Tests run during this session
+
+- `uv run pytest tests/test_helper_tools.py -q` -> pass
+- `uv run pytest tests/test_server.py -q` -> pass
+- Targeted `workflow_execution` tests for `StartAHORun` compatibility and retries -> pass
 
 ## Resume workflow
 
-1. Push latest branch commit(s) to PR #12.
-2. Merge PR #12.
-3. Rebuild/push amd64 image from merged `main`.
-4. Update Lambda image and rerun smoke tests from `DEPLOYMENT.md`.
+1. Commit and push this branch.
+2. Open/update PR against `main`.
+3. Merge after review.
+4. Implement issue #16 (`CancelAHORun`) on a new branch after this PR is merged.

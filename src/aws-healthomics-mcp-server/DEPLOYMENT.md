@@ -116,6 +116,12 @@ Recommended sequence:
 3. Task and engine logs for detailed debugging.
 4. Performance analysis for resource/cost tuning.
 
+### MCP-native guidance endpoint
+
+Use `GetAHOServerManual` to retrieve runtime guidance as Markdown directly from the MCP server.
+This is the canonical guidance surface for clients and should be preferred over external fallback
+instructions.
+
 ## Example deployment flow
 
 1. Lint WDL/CWL files.
@@ -267,3 +273,10 @@ Public (no auth) routes:
    "There is no current event loop in thread 'MainThread'":
    Use a build that includes the Python 3.13 async-bridge fix in
    `lambda_handler._run_async` (`asyncio.run(...)`).
+11. `StartAHORun` appears in client schema as all-string/all-required:
+   This is a connector-side schema drift condition. Use a build that includes
+   server-side placeholder normalization and retry-without-optional-fields behavior
+   (latest compatibility image tags in `WORK_CONTINUITY.md`).
+12. Client cannot stop runs from MCP:
+   `CancelAHORun` is not exposed yet in current toolset. Track implementation in:
+   https://github.com/peterbb148/awslabs-mcp/issues/16

@@ -14,6 +14,7 @@
 
 """Workflow execution tools for the AWS HealthOmics MCP server."""
 
+import botocore
 import json
 from awslabs.aws_healthomics_mcp_server.consts import (
     CACHE_BEHAVIORS,
@@ -114,6 +115,56 @@ def filter_runs_by_creation_time(
     return filtered_runs
 
 
+def _normalize_optional_string(
+    value: Optional[Any],
+    *,
+    treat_zero_as_none: bool = False,
+) -> Optional[str]:
+    """Normalize optional string-like inputs from heterogeneous MCP clients."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        return str(value)
+
+    normalized = value.strip()
+    if not normalized:
+        return None
+
+    lowered = normalized.lower()
+    if lowered in {'none', 'null', 'n/a'}:
+        return None
+    if treat_zero_as_none and lowered == '0':
+        return None
+
+    return normalized
+
+
+def _normalize_storage_capacity(value: Optional[Any]) -> Optional[int]:
+    """Normalize storage capacity values that may arrive as strings."""
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped or stripped.lower() in {'none', 'null', 'n/a', '0'}:
+            return None
+        return int(stripped)
+    return int(value)
+
+
+def _should_retry_without_optional_fields(exc: botocore.exceptions.ClientError) -> bool:
+    """Detect validation errors caused by stale connector-required optional fields."""
+    error_code = exc.response.get('Error', {}).get('Code')
+    message = exc.response.get('Error', {}).get('Message', '').lower()
+    if error_code not in {'ValidationException', 'ResourceNotFoundException'}:
+        return False
+    return (
+        ('workflow version' in message and 'not found' in message)
+        or ('run cache entry' in message and 'not found' in message)
+    )
+
+
 async def start_run(
     ctx: Context,
     workflow_id: str = Field(
@@ -184,6 +235,23 @@ async def start_run(
     Returns:
         Dictionary containing the run information or error dict
     """
+    # Normalize optional fields to tolerate stale client schemas that force placeholders.
+    try:
+        workflow_version_name = _normalize_optional_string(workflow_version_name)
+        cache_id = _normalize_optional_string(cache_id, treat_zero_as_none=True)
+        cache_behavior = _normalize_optional_string(cache_behavior)
+        storage_capacity = _normalize_storage_capacity(storage_capacity)
+    except ValueError as e:
+        return await handle_tool_error(
+            ctx,
+            ValueError(f'Invalid storage_capacity value: {str(e)}'),
+            'Invalid storage capacity',
+        )
+
+    if isinstance(storage_type, str):
+        normalized_storage_type = storage_type.strip().upper()
+        storage_type = normalized_storage_type if normalized_storage_type else 'DYNAMIC'
+
     # Validate parameters first, before creating client
     # Validate storage type
     if storage_type not in STORAGE_TYPES:
@@ -262,18 +330,32 @@ async def start_run(
 
     try:
         response = client.start_run(**params)
+    except botocore.exceptions.ClientError as e:
+        if not _should_retry_without_optional_fields(e):
+            raise
 
-        return {
-            'id': response.get('id'),
-            'arn': response.get('arn'),
-            'status': response.get('status'),
-            'name': name,
-            'workflowId': workflow_id,
-            'workflowVersionName': workflow_version_name,
-            'outputUri': output_uri,
-        }
+        retry_params = dict(params)
+        retry_params.pop('workflowVersionName', None)
+        retry_params.pop('cacheId', None)
+        retry_params.pop('cacheBehavior', None)
+
+        logger.warning(
+            'StartRun rejected optional wrapper fields; retrying without '
+            'workflowVersionName/cacheId/cacheBehavior'
+        )
+        response = client.start_run(**retry_params)
     except Exception as e:
         return await handle_tool_error(ctx, e, 'Error starting run')
+
+    return {
+        'id': response.get('id'),
+        'arn': response.get('arn'),
+        'status': response.get('status'),
+        'name': name,
+        'workflowId': workflow_id,
+        'workflowVersionName': response.get('workflowVersionName'),
+        'outputUri': output_uri,
+    }
 
 
 async def list_runs(

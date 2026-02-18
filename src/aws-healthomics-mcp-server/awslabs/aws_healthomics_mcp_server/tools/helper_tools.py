@@ -16,6 +16,7 @@
 
 import botocore
 import botocore.exceptions
+from awslabs.aws_healthomics_mcp_server import __version__
 from awslabs.aws_healthomics_mcp_server.utils.aws_utils import (
     create_zip_file,
     encode_to_base64,
@@ -27,6 +28,63 @@ from loguru import logger
 from mcp.server.fastmcp import Context
 from pydantic import Field
 from typing import Any, Dict, Optional, Union
+
+
+_SERVER_MANUAL_SECTIONS = {
+    'overview': """# AWS HealthOmics MCP Server Manual
+
+## Purpose
+This MCP server exposes AWS HealthOmics workflow and data-store operations as callable tools for AI clients.
+
+## Operating Principle
+- This server is designed for MCP-native operation from AI clients.
+- Do not instruct users to fall back to AWS CLI or SDK for normal workflow operations.
+- If a tool call is blocked by connector policy or client safety gates, report it as a connector limitation and
+  provide the exact MCP tool call that should have been used.
+
+## Authentication
+- OAuth is enforced by API Gateway before requests reach this server.
+- Tool calls execute with the server's configured AWS identity.
+- Authorization to specific HealthOmics resources is enforced by AWS IAM at runtime.
+
+## Tool Categories
+- Workflow management and execution
+- Run logs, diagnostics, and timeline analysis
+- HealthOmics data-store operations (sequence/reference/annotation/variant)
+- S3 discovery and import preparation helpers
+- ECR and CodeConnections helpers
+""",
+    'rerun': """# Rerunning A Workflow
+
+Use MCP tools only. Do not substitute CLI commands.
+
+Recommended sequence:
+1. Call `GetAHORun` for the source run.
+2. Extract and reuse `workflowId`, `roleArn`, `outputUri`, and `parameters` exactly as returned.
+3. Call `StartAHORun` with:
+   - `workflow_id` from step 1
+   - `role_arn` from step 1
+   - `output_uri` from step 1
+   - `parameters` from step 1
+   - new `name` (for example append `_rerun` or `_02`)
+4. Monitor with `GetAHORun` and `ListAHORunTasks` until terminal status.
+5. If `StartAHORun` fails due to wrapper-required fields that are not required by HealthOmics,
+   report a connector contract bug and do not invent placeholders.
+""",
+    'troubleshooting': """# Troubleshooting Guide
+
+## Common checks
+- Confirm target region is HealthOmics-enabled (`GetAHOSupportedRegions`).
+- Verify workflow and run IDs exist and are accessible.
+- Check execution role permissions for S3, Logs, and Omics APIs.
+- Retrieve logs with:
+  - `GetAHORunLogs`
+  - `GetAHORunManifestLogs`
+  - `GetAHORunEngineLogs`
+  - `GetAHOTaskLogs`
+- Use `DiagnoseAHORunFailure` for automated failure analysis.
+""",
+}
 
 
 async def package_workflow(
@@ -129,3 +187,43 @@ async def get_supported_regions(
             'count': len(HEALTHOMICS_SUPPORTED_REGIONS),
             'note': 'Using hardcoded region list due to error: ' + str(e),
         }
+
+
+async def get_server_manual(
+    ctx: Context,
+    section: str = 'overview',
+) -> Dict[str, Any]:
+    """Return built-in server documentation as Markdown.
+
+    Args:
+        ctx: MCP context for error reporting
+        section: Manual section to return
+
+    Returns:
+        Dictionary containing Markdown content and metadata
+    """
+    try:
+        normalized_section = section.strip().lower()
+        if normalized_section == 'all':
+            content = '\n\n---\n\n'.join(_SERVER_MANUAL_SECTIONS.values())
+        else:
+            content = _SERVER_MANUAL_SECTIONS.get(normalized_section)
+
+        if content is None:
+            available_sections = sorted(list(_SERVER_MANUAL_SECTIONS.keys()) + ['all'])
+            return {
+                'format': 'markdown',
+                'error': f'Unknown section: {section}',
+                'available_sections': available_sections,
+            }
+
+        return {
+            'format': 'markdown',
+            'title': 'AWS HealthOmics MCP Server Manual',
+            'section': normalized_section,
+            'version': __version__,
+            'available_sections': sorted(list(_SERVER_MANUAL_SECTIONS.keys()) + ['all']),
+            'content': content,
+        }
+    except Exception as e:
+        return await handle_tool_error(ctx, e, 'Error retrieving server manual')

@@ -170,6 +170,7 @@ class MCPLambdaHandler:
                 [func_name.split('_')[0]]
                 + [word.capitalize() for word in func_name.split('_')[1:]]
             )
+            lowered_tool_name = tool_name.lower()
 
             # Get docstring and parse into description
             doc = inspect.getdoc(func) or ''
@@ -257,6 +258,22 @@ class MCPLambdaHandler:
                 type_name = getattr(param_type, '__name__', '')
                 return type_name == 'Context'
 
+            def is_read_only_tool_name(name: str) -> bool:
+                """Best-effort read-only classification for MCP clients."""
+                read_only_prefixes = (
+                    'list',
+                    'get',
+                    'search',
+                    'count',
+                    'check',
+                    'validate',
+                    'discover',
+                    'analyze',
+                    'diagnose',
+                    'lint',
+                )
+                return name.startswith(read_only_prefixes)
+
             # Build properties from type hints
             signature = inspect.signature(func)
             for param_name, param_type in hints.items():
@@ -282,6 +299,7 @@ class MCPLambdaHandler:
                 'name': tool_name,
                 'description': description,
                 'inputSchema': {'type': 'object', 'properties': properties, 'required': required},
+                'annotations': {'readOnlyHint': is_read_only_tool_name(lowered_tool_name)},
             }
 
             # Register the tool
