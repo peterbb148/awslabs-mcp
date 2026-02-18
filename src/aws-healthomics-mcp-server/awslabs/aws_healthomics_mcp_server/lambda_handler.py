@@ -999,6 +999,39 @@ def TailAHORunTaskLogs(
 
 
 @mcp.tool()
+def GetAHORunProgress(
+    run_id: str,
+    include_recent_logs: bool = True,
+    log_limit: int = 80,
+) -> Dict[str, Any]:
+    """Return hybrid progress for a workflow run.
+
+    Args:
+        run_id: ID of the run
+        include_recent_logs: Include recent merged run/task logs for telemetry extraction
+        log_limit: Maximum number of log events to inspect for progress signals
+
+    Returns:
+        Dictionary containing progress mode, confidence, and optional percent complete
+    """
+    from awslabs.aws_healthomics_mcp_server.tools.workflow_analysis import get_run_progress
+
+    async def _call():
+        class MockContext:
+            async def error(self, msg):
+                logger.error(msg)
+
+        return await get_run_progress(
+            MockContext(),
+            run_id=run_id,
+            include_recent_logs=include_recent_logs,
+            log_limit=log_limit,
+        )
+
+    return _run_async(_call())
+
+
+@mcp.tool()
 def GetAHORunSummary(
     run_id: str,
     include_recent_logs: bool = True,

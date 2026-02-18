@@ -63,7 +63,8 @@ This MCP server provides tools for:
 5. **GetAHORunManifestLogs** - Access run manifest logs with runtime information and metrics
 6. **GetAHOTaskLogs** - Get task-specific logs for debugging individual workflow steps
 7. **TailAHORunTaskLogs** - Tail merged recent task/run events without requiring CloudWatch identifiers
-8. **GetAHORunSummary** - Get one-call run summary combining HealthOmics state and recent logs
+8. **GetAHORunProgress** - Get hybrid run progress with `coarse`/`hybrid`/`telemetry-driven` modes
+9. **GetAHORunSummary** - Get one-call run summary combining HealthOmics state and recent logs
 
 ### Region Management Tools
 
