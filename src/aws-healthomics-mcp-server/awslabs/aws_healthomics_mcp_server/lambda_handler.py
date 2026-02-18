@@ -57,6 +57,11 @@ from awslabs.aws_healthomics_mcp_server.tools.ecr_tools import (
     list_pull_through_cache_rules,
     validate_healthomics_ecr_config,
 )
+from awslabs.aws_healthomics_mcp_server.tools.helper_tools import (
+    get_server_manual,
+    get_supported_regions,
+    package_workflow,
+)
 from awslabs.aws_healthomics_mcp_server.tools.reference_store_tools import (
     get_aho_reference,
     get_aho_reference_import_job,
@@ -1150,8 +1155,6 @@ def PackageAHOWorkflow(
     Returns:
         Base64-encoded ZIP file containing the workflow definition
     """
-    from awslabs.aws_healthomics_mcp_server.tools.helper_tools import package_workflow
-
     async def _call():
         class MockContext:
             async def error(self, msg):
@@ -1174,14 +1177,32 @@ def GetAHOSupportedRegions() -> Dict[str, Any]:
     Returns:
         Dictionary containing the list of supported region codes
     """
-    from awslabs.aws_healthomics_mcp_server.tools.helper_tools import get_supported_regions
-
     async def _call():
         class MockContext:
             async def error(self, msg):
                 logger.error(msg)
 
         return await get_supported_regions(MockContext())
+
+    return _run_async(_call())
+
+
+@mcp.tool()
+def GetAHOServerManual(section: str = 'overview') -> Dict[str, Any]:
+    """Return built-in server documentation as Markdown.
+
+    Args:
+        section: Manual section to return: overview, rerun, troubleshooting, or all
+
+    Returns:
+        Dictionary containing Markdown content and metadata
+    """
+    async def _call():
+        class MockContext:
+            async def error(self, msg):
+                logger.error(msg)
+
+        return await get_server_manual(MockContext(), section=section)
 
     return _run_async(_call())
 

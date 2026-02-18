@@ -16,33 +16,30 @@
 
 import pytest
 from awslabs.aws_healthomics_mcp_server.consts import HEALTHOMICS_SUPPORTED_REGIONS
-from awslabs.aws_healthomics_mcp_server.tools.helper_tools import get_supported_regions
+from awslabs.aws_healthomics_mcp_server.tools.helper_tools import (
+    get_server_manual,
+    get_supported_regions,
+)
 from botocore.exceptions import BotoCoreError, ClientError
 from unittest.mock import AsyncMock, MagicMock, patch
 
 
 @pytest.mark.asyncio
 async def test_get_supported_regions_success():
-    """Test successful retrieval of regions from SSM."""
-    # Mock SSM response
-    mock_ssm_response = {
-        'Parameters': [
-            {'Value': 'us-east-1'},
-            {'Value': 'us-west-2'},
-            {'Value': 'eu-west-1'},
-        ]
-    }
+    """Test successful retrieval of regions from boto session."""
+    mock_regions = ['us-east-1', 'us-west-2', 'eu-west-1']
 
     # Mock context and session
     mock_ctx = AsyncMock()
     mock_session = MagicMock()
-    mock_ssm = MagicMock()
-    mock_ssm.get_parameters_by_path.return_value = mock_ssm_response
-    mock_session.client.return_value = mock_ssm
+    mock_session.get_available_regions.return_value = mock_regions
 
     with patch(
         'awslabs.aws_healthomics_mcp_server.tools.helper_tools.get_aws_session',
         return_value=mock_session,
+    ), patch(
+        'awslabs.aws_healthomics_mcp_server.tools.helper_tools.get_omics_service_name',
+        return_value='omics',
     ):
         result = await get_supported_regions(mock_ctx)
 
@@ -51,29 +48,25 @@ async def test_get_supported_regions_success():
     assert result['regions'] == ['eu-west-1', 'us-east-1', 'us-west-2']
     assert 'note' not in result
 
-    # Verify SSM was called correctly
-    mock_session.client.assert_called_once_with('ssm')
-    mock_ssm.get_parameters_by_path.assert_called_once_with(
-        Path='/aws/service/global-infrastructure/services/omics/regions'
-    )
+    # Verify session region lookup was called correctly
+    mock_session.get_available_regions.assert_called_once_with('omics')
 
 
 @pytest.mark.asyncio
 async def test_get_supported_regions_empty_ssm():
-    """Test fallback to hardcoded regions when SSM returns empty list."""
-    # Mock SSM response with no parameters
-    mock_ssm_response = {'Parameters': []}
+    """Test fallback to hardcoded regions when lookup returns empty list."""
 
     # Mock context and session
     mock_ctx = AsyncMock()
     mock_session = MagicMock()
-    mock_ssm = MagicMock()
-    mock_ssm.get_parameters_by_path.return_value = mock_ssm_response
-    mock_session.client.return_value = mock_ssm
+    mock_session.get_available_regions.return_value = []
 
     with patch(
         'awslabs.aws_healthomics_mcp_server.tools.helper_tools.get_aws_session',
         return_value=mock_session,
+    ), patch(
+        'awslabs.aws_healthomics_mcp_server.tools.helper_tools.get_omics_service_name',
+        return_value='omics',
     ):
         result = await get_supported_regions(mock_ctx)
 
@@ -89,13 +82,14 @@ async def test_get_supported_regions_boto_error():
     # Mock context and session
     mock_ctx = AsyncMock()
     mock_session = MagicMock()
-    mock_ssm = MagicMock()
-    mock_ssm.get_parameters_by_path.side_effect = BotoCoreError()
-    mock_session.client.return_value = mock_ssm
+    mock_session.get_available_regions.side_effect = BotoCoreError()
 
     with patch(
         'awslabs.aws_healthomics_mcp_server.tools.helper_tools.get_aws_session',
         return_value=mock_session,
+    ), patch(
+        'awslabs.aws_healthomics_mcp_server.tools.helper_tools.get_omics_service_name',
+        return_value='omics',
     ):
         result = await get_supported_regions(mock_ctx)
 
@@ -112,15 +106,16 @@ async def test_get_supported_regions_client_error():
     # Mock context and session
     mock_ctx = AsyncMock()
     mock_session = MagicMock()
-    mock_ssm = MagicMock()
-    mock_ssm.get_parameters_by_path.side_effect = ClientError(
+    mock_session.get_available_regions.side_effect = ClientError(
         {'Error': {'Code': 'InvalidParameter', 'Message': 'Test error'}}, 'GetParametersByPath'
     )
-    mock_session.client.return_value = mock_ssm
 
     with patch(
         'awslabs.aws_healthomics_mcp_server.tools.helper_tools.get_aws_session',
         return_value=mock_session,
+    ), patch(
+        'awslabs.aws_healthomics_mcp_server.tools.helper_tools.get_omics_service_name',
+        return_value='omics',
     ):
         result = await get_supported_regions(mock_ctx)
 
@@ -137,13 +132,14 @@ async def test_get_supported_regions_unexpected_error():
     # Mock context and session
     mock_ctx = AsyncMock()
     mock_session = MagicMock()
-    mock_ssm = MagicMock()
-    mock_ssm.get_parameters_by_path.side_effect = Exception('Unexpected error')
-    mock_session.client.return_value = mock_ssm
+    mock_session.get_available_regions.side_effect = Exception('Unexpected error')
 
     with patch(
         'awslabs.aws_healthomics_mcp_server.tools.helper_tools.get_aws_session',
         return_value=mock_session,
+    ), patch(
+        'awslabs.aws_healthomics_mcp_server.tools.helper_tools.get_omics_service_name',
+        return_value='omics',
     ):
         result = await get_supported_regions(mock_ctx)
 
@@ -156,3 +152,40 @@ async def test_get_supported_regions_unexpected_error():
     # Verify error was reported to context
     mock_ctx.error.assert_called_once()
     assert 'Unexpected error retrieving supported regions' in mock_ctx.error.call_args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_get_server_manual_overview():
+    """Test default manual section response."""
+    mock_ctx = AsyncMock()
+    result = await get_server_manual(mock_ctx)
+
+    assert result['format'] == 'markdown'
+    assert result['section'] == 'overview'
+    assert 'AWS HealthOmics MCP Server Manual' in result['content']
+    assert 'available_sections' in result
+    assert 'all' in result['available_sections']
+
+
+@pytest.mark.asyncio
+async def test_get_server_manual_all_sections():
+    """Test manual response containing all sections."""
+    mock_ctx = AsyncMock()
+    result = await get_server_manual(mock_ctx, section='all')
+
+    assert result['format'] == 'markdown'
+    assert result['section'] == 'all'
+    assert 'Rerunning A Workflow' in result['content']
+    assert 'Troubleshooting Guide' in result['content']
+    assert 'aws omics' not in result['content'].lower()
+
+
+@pytest.mark.asyncio
+async def test_get_server_manual_unknown_section():
+    """Test unknown section validation behavior."""
+    mock_ctx = AsyncMock()
+    result = await get_server_manual(mock_ctx, section='bad-section')
+
+    assert result['format'] == 'markdown'
+    assert 'Unknown section' in result['error']
+    assert 'available_sections' in result

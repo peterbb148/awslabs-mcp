@@ -1125,6 +1125,138 @@ async def test_start_run_with_non_object_parameters():
 
 
 @pytest.mark.asyncio
+async def test_start_run_retries_without_workflow_version_when_not_found():
+    """Test fallback retry without workflow version for stale client placeholder values."""
+    mock_ctx = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.start_run.side_effect = [
+        botocore.exceptions.ClientError(
+            {
+                'Error': {
+                    'Code': 'ValidationException',
+                    'Message': 'Workflow version 1 for workflow wfl-12345 not found',
+                }
+            },
+            'StartRun',
+        ),
+        {'id': 'run-12345', 'arn': 'arn:run', 'status': 'PENDING'},
+    ]
+
+    with patch(
+        'awslabs.aws_healthomics_mcp_server.tools.workflow_execution.get_omics_client',
+        return_value=mock_client,
+    ):
+        result = await start_run(
+            mock_ctx,
+            workflow_id='wfl-12345',
+            role_arn='arn:aws:iam::123456789012:role/HealthOmicsRole',
+            name='test-run',
+            output_uri='s3://my-bucket/outputs/',
+            parameters='{"param1":"value1"}',
+            workflow_version_name='1',
+            storage_type='DYNAMIC',
+            storage_capacity='0',
+            cache_id='',
+            cache_behavior='',
+        )
+
+    assert result['id'] == 'run-12345'
+    assert mock_client.start_run.call_count == 2
+    first_call_kwargs = mock_client.start_run.call_args_list[0][1]
+    second_call_kwargs = mock_client.start_run.call_args_list[1][1]
+    assert first_call_kwargs['workflowVersionName'] == '1'
+    assert 'workflowVersionName' not in second_call_kwargs
+
+
+@pytest.mark.asyncio
+async def test_start_run_retries_without_workflow_version_resource_not_found():
+    """Test fallback retry for ResourceNotFoundException workflow version failures."""
+    mock_ctx = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.start_run.side_effect = [
+        botocore.exceptions.ClientError(
+            {
+                'Error': {
+                    'Code': 'ResourceNotFoundException',
+                    'Message': 'Workflow version 1 for workflow wfl-12345 not found',
+                }
+            },
+            'StartRun',
+        ),
+        {'id': 'run-777', 'arn': 'arn:run', 'status': 'PENDING'},
+    ]
+
+    with patch(
+        'awslabs.aws_healthomics_mcp_server.tools.workflow_execution.get_omics_client',
+        return_value=mock_client,
+    ):
+        result = await start_run(
+            mock_ctx,
+            workflow_id='wfl-12345',
+            role_arn='arn:aws:iam::123456789012:role/HealthOmicsRole',
+            name='test-run',
+            output_uri='s3://my-bucket/outputs/',
+            parameters='{"param1":"value1"}',
+            workflow_version_name='1',
+            storage_type='DYNAMIC',
+            storage_capacity='0',
+            cache_id='',
+            cache_behavior='',
+        )
+
+    assert result['id'] == 'run-777'
+    assert mock_client.start_run.call_count == 2
+    second_call_kwargs = mock_client.start_run.call_args_list[1][1]
+    assert 'workflowVersionName' not in second_call_kwargs
+
+
+@pytest.mark.asyncio
+async def test_start_run_retries_without_cache_when_cache_not_found():
+    """Test fallback retry without cache fields for stale connector cache placeholders."""
+    mock_ctx = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.start_run.side_effect = [
+        botocore.exceptions.ClientError(
+            {
+                'Error': {
+                    'Code': 'ValidationException',
+                    'Message': 'Run Cache entry 12345 was not found',
+                }
+            },
+            'StartRun',
+        ),
+        {'id': 'run-999', 'arn': 'arn:run', 'status': 'PENDING'},
+    ]
+
+    with patch(
+        'awslabs.aws_healthomics_mcp_server.tools.workflow_execution.get_omics_client',
+        return_value=mock_client,
+    ):
+        result = await start_run(
+            mock_ctx,
+            workflow_id='wfl-12345',
+            role_arn='arn:aws:iam::123456789012:role/HealthOmicsRole',
+            name='test-run',
+            output_uri='s3://my-bucket/outputs/',
+            parameters={'param1': 'value1'},
+            workflow_version_name=None,
+            storage_type='DYNAMIC',
+            storage_capacity=None,
+            cache_id='12345',
+            cache_behavior='CACHE_ALWAYS',
+        )
+
+    assert result['id'] == 'run-999'
+    assert mock_client.start_run.call_count == 2
+    first_call_kwargs = mock_client.start_run.call_args_list[0][1]
+    second_call_kwargs = mock_client.start_run.call_args_list[1][1]
+    assert first_call_kwargs['cacheId'] == '12345'
+    assert first_call_kwargs['cacheBehavior'] == 'CACHE_ALWAYS'
+    assert 'cacheId' not in second_call_kwargs
+    assert 'cacheBehavior' not in second_call_kwargs
+
+
+@pytest.mark.asyncio
 async def test_start_run_with_static_storage():
     """Test workflow run start with static storage."""
     # Mock response data
