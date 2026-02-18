@@ -423,6 +423,43 @@ async def test_get_run_progress_coarse_only(
     assert result['diagnostics']['coarseOnly'] is True
 
 
+@pytest.mark.asyncio
+@patch('awslabs.aws_healthomics_mcp_server.tools.workflow_analysis.get_omics_client')
+@patch('awslabs.aws_healthomics_mcp_server.tools.workflow_analysis.tail_run_task_logs')
+async def test_get_run_progress_cancelled_percent_is_none(
+    mock_tail_run_task_logs, mock_get_omics_client, mock_context
+):
+    """Cancelled runs should not expose telemetry-derived percent complete."""
+    mock_omics_client = MagicMock()
+    mock_get_omics_client.return_value = mock_omics_client
+    mock_omics_client.get_run.return_value = {
+        'id': 'run-12345',
+        'name': 'demo-run',
+        'status': 'CANCELLED',
+        'workflowId': 'wf-1',
+    }
+    mock_omics_client.list_run_tasks.return_value = {
+        'items': [{'taskId': 'task-1', 'name': 'IndexReference', 'status': 'CANCELLED'}]
+    }
+    mock_tail_run_task_logs.return_value = {
+        'events': [
+            {'timestamp': '2026-02-18T19:27:03Z', 'source': 'task', 'message': 'textLength=1000'},
+            {
+                'timestamp': '2026-02-18T19:27:04Z',
+                'source': 'task',
+                'message': '500 characters processed',
+            },
+        ],
+        'diagnostics': {'coarseOnly': False, 'notes': []},
+    }
+
+    result = await get_run_progress(mock_context, run_id='run-12345', log_limit=20)
+
+    assert result['progress']['progressMode'] == 'coarse'
+    assert result['progress']['confidence'] == 'high'
+    assert result['progress']['percentComplete'] is None
+
+
 class TestGetRunManifestLogs:
     """Test the get_run_manifest_logs function."""
 

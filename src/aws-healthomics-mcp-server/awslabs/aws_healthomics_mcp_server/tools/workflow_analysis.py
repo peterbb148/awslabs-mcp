@@ -995,9 +995,20 @@ async def get_run_progress(
             confidence = 'low' if run.get('status') != 'COMPLETED' else 'high'
             progress_basis = 'Derived from HealthOmics run/task lifecycle only.'
 
-        if run.get('status') == 'COMPLETED':
+        run_status = str(run.get('status') or '').upper()
+
+        if run_status == 'COMPLETED':
+            progress_mode = 'coarse'
             percent_complete = 100.0
             confidence = 'high'
+            progress_basis = 'Run is completed; percent complete is terminal.'
+        elif run_status in {'FAILED', 'CANCELLED'}:
+            progress_mode = 'coarse'
+            percent_complete = None
+            confidence = 'high'
+            progress_basis = (
+                'Run is in a terminal non-success state; percent complete is not meaningful.'
+            )
 
         recent_signals = [str(event.get('message', ''))[:240] for event in events[:5]]
 
