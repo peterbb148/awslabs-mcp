@@ -95,8 +95,14 @@ def test_readonly_hint_annotations_for_read_and_write_tools():
     def start_aho_run(workflow_id: str) -> dict:
         return {'workflow_id': workflow_id}
 
+    @handler.tool()
+    def cancel_aho_run(run_id: str) -> dict:
+        return {'run_id': run_id}
+
     list_schema = handler.tools['listAhoWorkflows']
     start_schema = handler.tools['startAhoRun']
+    cancel_schema = handler.tools['cancelAhoRun']
 
     assert list_schema['annotations']['readOnlyHint'] is True
     assert start_schema['annotations']['readOnlyHint'] is False
+    assert cancel_schema['annotations']['readOnlyHint'] is False

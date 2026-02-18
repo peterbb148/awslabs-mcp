@@ -88,6 +88,7 @@ from awslabs.aws_healthomics_mcp_server.tools.workflow_analysis import (
     get_task_logs,
 )
 from awslabs.aws_healthomics_mcp_server.tools.workflow_execution import (
+    cancel_run,
     get_run,
     get_run_task,
     list_run_tasks,
@@ -127,6 +128,7 @@ This MCP server provides tools for creating, managing, and analyzing genomic wor
 
 ### Workflow Execution
 - **StartAHORun**: Start a workflow run
+- **CancelAHORun**: Cancel a running or queued workflow run
 - **ListAHORuns**: List workflow runs
 - **GetAHORun**: Get details about a specific run
 - **ListAHORunTasks**: List tasks for a specific run
@@ -233,6 +235,7 @@ mcp.tool(name='ListAHOWorkflowVersions')(list_workflow_versions)
 
 # Register workflow execution tools
 mcp.tool(name='StartAHORun')(start_run)
+mcp.tool(name='CancelAHORun')(cancel_run)
 mcp.tool(name='ListAHORuns')(list_runs)
 mcp.tool(name='GetAHORun')(get_run)
 mcp.tool(name='ListAHORunTasks')(list_run_tasks)

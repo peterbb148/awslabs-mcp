@@ -581,6 +581,34 @@ async def get_run(
         return await handle_tool_error(ctx, e, f'Error getting run {run_id}')
 
 
+async def cancel_run(
+    ctx: Context,
+    run_id: str = Field(
+        ...,
+        description='ID of the run to cancel',
+    ),
+) -> Dict[str, Any]:
+    """Cancel a running or queued workflow run.
+
+    Args:
+        ctx: MCP context for error reporting
+        run_id: ID of the run to cancel
+
+    Returns:
+        Dictionary containing cancellation status information or error dict
+    """
+    client = get_omics_client()
+
+    try:
+        response = client.cancel_run(id=run_id)
+        return {
+            'id': response.get('id', run_id),
+            'status': response.get('status'),
+        }
+    except Exception as e:
+        return await handle_tool_error(ctx, e, f'Error cancelling run {run_id}')
+
+
 async def list_run_tasks(
     ctx: Context,
     run_id: str = Field(

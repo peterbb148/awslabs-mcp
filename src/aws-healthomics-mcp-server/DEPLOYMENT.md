@@ -98,6 +98,10 @@ Track execution with:
 - `ListAHORunTasks`
 - `GetAHORunTask`
 
+Stop execution when needed with:
+
+- `CancelAHORun`
+
 ## Step 5: Validate results and troubleshoot
 
 Use:
@@ -278,5 +282,5 @@ Public (no auth) routes:
    server-side placeholder normalization and retry-without-optional-fields behavior
    (latest compatibility image tags in `WORK_CONTINUITY.md`).
 12. Client cannot stop runs from MCP:
-   `CancelAHORun` is not exposed yet in current toolset. Track implementation in:
-   https://github.com/peterbb148/awslabs-mcp/issues/16
+   Verify `CancelAHORun` appears in `tools/list` and that the deployed image includes
+   issue #16 changes. If missing, redeploy the latest Lambda image.
