@@ -12,6 +12,8 @@ orchestration.
 For structured workflow telemetry contracts, see
 [docs/workflow-logging-schema.md](docs/workflow-logging-schema.md) and
 [docs/workflow-event-taxonomy.md](docs/workflow-event-taxonomy.md).
+For retention, redaction, and query operations policy, see
+[docs/logging-operations-policy.md](docs/logging-operations-policy.md).
 
 ## What "deployment" means here
 
