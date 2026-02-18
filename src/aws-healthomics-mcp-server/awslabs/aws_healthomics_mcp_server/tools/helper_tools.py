@@ -83,6 +83,7 @@ Recommended sequence:
   - `GetAHORunManifestLogs`
   - `GetAHORunEngineLogs`
   - `GetAHOTaskLogs`
+  - `TailAHORunTaskLogs`
 - Use `DiagnoseAHORunFailure` for automated failure analysis.
 """,
 }

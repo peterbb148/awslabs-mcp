@@ -44,6 +44,7 @@ def test_server_has_required_tools():
         'GetAHORunManifestLogs',
         'GetAHORunEngineLogs',
         'GetAHOTaskLogs',
+        'TailAHORunTaskLogs',
         'AnalyzeAHORunPerformance',
         'DiagnoseAHORunFailure',
         'PackageAHOWorkflow',

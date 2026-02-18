@@ -86,6 +86,7 @@ from awslabs.aws_healthomics_mcp_server.tools.workflow_analysis import (
     get_run_logs,
     get_run_manifest_logs,
     get_task_logs,
+    tail_run_task_logs,
 )
 from awslabs.aws_healthomics_mcp_server.tools.workflow_execution import (
     cancel_run,
@@ -139,6 +140,7 @@ This MCP server provides tools for creating, managing, and analyzing genomic wor
 - **GetAHORunManifestLogs**: Retrieve run manifest logs with workflow summary
 - **GetAHORunEngineLogs**: Retrieve engine logs containing STDOUT and STDERR
 - **GetAHOTaskLogs**: Retrieve logs for specific workflow tasks
+- **TailAHORunTaskLogs**: Tail recent task/run logs for a workflow using run-native inputs
 - **AnalyzeAHORunPerformance**: Analyze workflow run performance and resource utilization to provide optimization recommendations
 - **GenerateAHORunTimeline**: Generate a Gantt-style SVG timeline visualization showing task execution phases and parallelism
 
@@ -246,6 +248,7 @@ mcp.tool(name='GetAHORunLogs')(get_run_logs)
 mcp.tool(name='GetAHORunManifestLogs')(get_run_manifest_logs)
 mcp.tool(name='GetAHORunEngineLogs')(get_run_engine_logs)
 mcp.tool(name='GetAHOTaskLogs')(get_task_logs)
+mcp.tool(name='TailAHORunTaskLogs')(tail_run_task_logs)
 mcp.tool(name='AnalyzeAHORunPerformance')(analyze_run_performance)
 mcp.tool(name='GenerateAHORunTimeline')(generate_run_timeline)
 

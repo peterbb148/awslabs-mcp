@@ -62,6 +62,7 @@ This MCP server provides tools for:
 4. **GetAHORunEngineLogs** - Retrieve workflow engine logs (STDOUT/STDERR) for debugging
 5. **GetAHORunManifestLogs** - Access run manifest logs with runtime information and metrics
 6. **GetAHOTaskLogs** - Get task-specific logs for debugging individual workflow steps
+7. **TailAHORunTaskLogs** - Tail merged recent task/run events without requiring CloudWatch identifiers
 
 ### Region Management Tools
 
