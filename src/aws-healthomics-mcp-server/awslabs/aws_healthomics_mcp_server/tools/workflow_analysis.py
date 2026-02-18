@@ -17,8 +17,9 @@
 from awslabs.aws_healthomics_mcp_server.utils.aws_utils import get_omics_client
 from awslabs.aws_healthomics_mcp_server.utils.aws_utils import get_logs_client
 from awslabs.aws_healthomics_mcp_server.utils.error_utils import handle_tool_error
-from botocore.exceptions import ClientError
 from datetime import datetime, timedelta, timezone
+import re
+from botocore.exceptions import ClientError
 from loguru import logger
 from mcp.server.fastmcp import Context
 from pydantic import Field
@@ -837,3 +838,198 @@ async def get_run_summary(
         }
     except Exception as e:
         return await handle_tool_error(ctx, e, f'Error summarizing run {run_id}')
+
+
+def _compute_task_counts(tasks: List[Dict[str, Any]]) -> Dict[str, int]:
+    """Compute status counts for run tasks."""
+    task_counts = {'PENDING': 0, 'RUNNING': 0, 'COMPLETED': 0, 'FAILED': 0, 'OTHER': 0}
+    for task in tasks:
+        status = str(task.get('status', 'OTHER')).upper()
+        if status in task_counts:
+            task_counts[status] += 1
+        else:
+            task_counts['OTHER'] += 1
+    return task_counts
+
+
+def _resolve_active_task(tasks: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Return the current active task if one exists."""
+    for task in tasks:
+        status = str(task.get('status', '')).upper()
+        if status in {'RUNNING', 'STARTING', 'PENDING'}:
+            return {'taskId': task.get('taskId'), 'name': task.get('name')}
+    return None
+
+
+def _extract_telemetry_percent(events: List[Dict[str, Any]]) -> Optional[float]:
+    """Extract telemetry-driven percent complete from log messages when possible."""
+    text_length: Optional[int] = None
+    max_processed: Optional[int] = None
+    max_percent: Optional[float] = None
+
+    for event in events:
+        message = str(event.get('message', ''))
+        length_match = re.search(r'textLength=(\d+)', message)
+        if length_match:
+            text_length = int(length_match.group(1))
+
+        processed_match = re.search(r'(\d+)\s+characters processed', message)
+        if processed_match:
+            processed = int(processed_match.group(1))
+            max_processed = max(processed, max_processed or 0)
+
+        percent_match = re.search(r'(\d{1,3}(?:\.\d+)?)\s*%', message)
+        if percent_match:
+            percent_value = float(percent_match.group(1))
+            if 0 <= percent_value <= 100:
+                max_percent = max(percent_value, max_percent or 0.0)
+
+    if text_length and max_processed is not None and text_length > 0:
+        return round(min(100.0, (max_processed / text_length) * 100), 1)
+    if max_percent is not None:
+        return round(max_percent, 1)
+    return None
+
+
+def _compute_coarse_percent(run_status: Optional[str], task_counts: Dict[str, int]) -> Optional[float]:
+    """Compute a low-confidence coarse percent from task lifecycle state."""
+    normalized_status = str(run_status or '').upper()
+    if normalized_status == 'COMPLETED':
+        return 100.0
+    if normalized_status in {'FAILED', 'CANCELLED'}:
+        return None
+
+    total_tasks = sum(task_counts.values())
+    if total_tasks == 0:
+        return None
+
+    completed = task_counts['COMPLETED']
+    running = task_counts['RUNNING']
+    pending = task_counts['PENDING']
+    failed = task_counts['FAILED']
+    other = task_counts['OTHER']
+
+    weighted_progress = (
+        completed + (0.5 * running) + (0.25 * pending) + (0.5 * other) + (0.5 * failed)
+    )
+    return round(min(99.0, (weighted_progress / total_tasks) * 100), 1)
+
+
+async def get_run_progress(
+    ctx: Context,
+    run_id: str = Field(
+        ...,
+        description='ID of the run',
+    ),
+    include_recent_logs: bool = Field(
+        True,
+        description='Include recent merged run/task logs for telemetry extraction',
+    ),
+    log_limit: int = Field(
+        80,
+        description='Maximum number of recent merged log events to inspect',
+        ge=1,
+        le=500,
+    ),
+) -> Dict[str, Any]:
+    """Return run progress using HealthOmics state and optional log-derived telemetry."""
+    if isinstance(include_recent_logs, FieldInfo):
+        include_recent_logs = True
+    if isinstance(log_limit, FieldInfo):
+        log_limit = 80
+
+    omics_client = get_omics_client()
+
+    try:
+        run = omics_client.get_run(id=run_id)
+
+        tasks: List[Dict[str, Any]] = []
+        next_token: Optional[str] = None
+        while True:
+            params: Dict[str, Any] = {'id': run_id, 'maxResults': 100}
+            if next_token:
+                params['startingToken'] = next_token
+            response = omics_client.list_run_tasks(**params)
+            tasks.extend(response.get('items', []))
+            next_token = response.get('nextToken')
+            if not next_token:
+                break
+
+        task_counts = _compute_task_counts(tasks)
+        active_task = _resolve_active_task(tasks)
+
+        events: List[Dict[str, Any]] = []
+        notes: List[str] = []
+        coarse_only = True
+
+        if include_recent_logs:
+            tail_result = await tail_run_task_logs(
+                ctx,
+                run_id=run_id,
+                limit=log_limit,
+                include_system_events=True,
+            )
+            if 'error' in tail_result:
+                notes.append(tail_result['error'])
+            else:
+                events = tail_result.get('events', [])
+                coarse_only = tail_result.get('diagnostics', {}).get('coarseOnly', False)
+                notes.extend(tail_result.get('diagnostics', {}).get('notes', []))
+
+        telemetry_percent = _extract_telemetry_percent(events) if events else None
+        coarse_percent = _compute_coarse_percent(run.get('status'), task_counts)
+
+        if telemetry_percent is not None:
+            progress_mode = 'telemetry-driven'
+            percent_complete = telemetry_percent
+            confidence = 'high'
+            progress_basis = 'Derived from task telemetry in recent log events.'
+        elif events:
+            progress_mode = 'hybrid'
+            percent_complete = coarse_percent
+            confidence = 'medium' if percent_complete is not None else 'low'
+            progress_basis = 'Derived from HealthOmics task lifecycle with log signal context.'
+        else:
+            progress_mode = 'coarse'
+            percent_complete = coarse_percent
+            confidence = 'low' if run.get('status') != 'COMPLETED' else 'high'
+            progress_basis = 'Derived from HealthOmics run/task lifecycle only.'
+
+        if run.get('status') == 'COMPLETED':
+            percent_complete = 100.0
+            confidence = 'high'
+
+        recent_signals = [str(event.get('message', ''))[:240] for event in events[:5]]
+
+        return {
+            'run': {
+                'id': run.get('id', run_id),
+                'name': run.get('name'),
+                'status': run.get('status'),
+                'workflowId': run.get('workflowId'),
+                'creationTime': run.get('creationTime').isoformat()
+                if run.get('creationTime')
+                else None,
+                'startTime': run.get('startTime').isoformat() if run.get('startTime') else None,
+                'stopTime': run.get('stopTime').isoformat() if run.get('stopTime') else None,
+            },
+            'taskCounts': task_counts,
+            'progress': {
+                'progressMode': progress_mode,
+                'percentComplete': percent_complete,
+                'confidence': confidence,
+                'activeTask': active_task,
+                'basis': progress_basis,
+            },
+            'recentSignals': recent_signals,
+            'diagnostics': {
+                'coarseOnly': coarse_only,
+                'notes': notes,
+                'signalInterpretation': (
+                    'Recent signals are unstructured logs and should not be treated as validated '
+                    'workflow outcomes.'
+                ),
+            },
+        }
+    except Exception as e:
+        return await handle_tool_error(ctx, e, f'Error retrieving progress for run {run_id}')

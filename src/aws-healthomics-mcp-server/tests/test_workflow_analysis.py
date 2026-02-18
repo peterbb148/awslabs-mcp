@@ -23,6 +23,7 @@ from awslabs.aws_healthomics_mcp_server.tools.run_analysis import (
 )
 from awslabs.aws_healthomics_mcp_server.tools.workflow_analysis import (
     _get_logs_from_stream,
+    get_run_progress,
     get_run_engine_logs,
     get_run_logs,
     get_run_manifest_logs,
@@ -311,6 +312,114 @@ async def test_get_run_summary_coarse_fallback(
 
     assert result['taskCounts']['RUNNING'] == 0
     assert result['logExcerpt'] == []
+    assert result['diagnostics']['coarseOnly'] is True
+
+
+@pytest.mark.asyncio
+@patch('awslabs.aws_healthomics_mcp_server.tools.workflow_analysis.get_omics_client')
+@patch('awslabs.aws_healthomics_mcp_server.tools.workflow_analysis.tail_run_task_logs')
+async def test_get_run_progress_telemetry_driven(
+    mock_tail_run_task_logs, mock_get_omics_client, mock_context
+):
+    """Progress tool should use telemetry when structured progress signals are present."""
+    mock_omics_client = MagicMock()
+    mock_get_omics_client.return_value = mock_omics_client
+    mock_omics_client.get_run.return_value = {
+        'id': 'run-12345',
+        'name': 'demo-run',
+        'status': 'RUNNING',
+        'workflowId': 'wf-1',
+    }
+    mock_omics_client.list_run_tasks.return_value = {
+        'items': [{'taskId': 'task-1', 'name': 'IndexReference', 'status': 'RUNNING'}]
+    }
+    mock_tail_run_task_logs.return_value = {
+        'events': [
+            {'timestamp': '2026-02-18T19:27:03Z', 'source': 'task', 'message': 'textLength=1000'},
+            {
+                'timestamp': '2026-02-18T19:27:04Z',
+                'source': 'task',
+                'message': '500 characters processed',
+            },
+        ],
+        'diagnostics': {'coarseOnly': False, 'notes': []},
+    }
+
+    result = await get_run_progress(mock_context, run_id='run-12345', log_limit=20)
+
+    assert result['progress']['progressMode'] == 'telemetry-driven'
+    assert result['progress']['confidence'] == 'high'
+    assert result['progress']['percentComplete'] == 50.0
+    assert result['progress']['activeTask']['taskId'] == 'task-1'
+
+
+@pytest.mark.asyncio
+@patch('awslabs.aws_healthomics_mcp_server.tools.workflow_analysis.get_omics_client')
+@patch('awslabs.aws_healthomics_mcp_server.tools.workflow_analysis.tail_run_task_logs')
+async def test_get_run_progress_hybrid_fallback(
+    mock_tail_run_task_logs, mock_get_omics_client, mock_context
+):
+    """Progress tool should fall back to hybrid mode when logs exist without telemetry metrics."""
+    mock_omics_client = MagicMock()
+    mock_get_omics_client.return_value = mock_omics_client
+    mock_omics_client.get_run.return_value = {
+        'id': 'run-12345',
+        'name': 'demo-run',
+        'status': 'RUNNING',
+        'workflowId': 'wf-1',
+    }
+    mock_omics_client.list_run_tasks.return_value = {
+        'items': [
+            {'taskId': 'task-1', 'name': 'StepA', 'status': 'COMPLETED'},
+            {'taskId': 'task-2', 'name': 'StepB', 'status': 'RUNNING'},
+            {'taskId': 'task-3', 'name': 'StepC', 'status': 'PENDING'},
+            {'taskId': 'task-4', 'name': 'StepD', 'status': 'PENDING'},
+        ]
+    }
+    mock_tail_run_task_logs.return_value = {
+        'events': [
+            {
+                'timestamp': '2026-02-18T19:27:03Z',
+                'source': 'run',
+                'message': 'RUNNING_TASK: StepB',
+            },
+        ],
+        'diagnostics': {'coarseOnly': False, 'notes': []},
+    }
+
+    result = await get_run_progress(mock_context, run_id='run-12345', log_limit=20)
+
+    assert result['progress']['progressMode'] == 'hybrid'
+    assert result['progress']['confidence'] == 'medium'
+    assert result['progress']['percentComplete'] is not None
+
+
+@pytest.mark.asyncio
+@patch('awslabs.aws_healthomics_mcp_server.tools.workflow_analysis.get_omics_client')
+@patch('awslabs.aws_healthomics_mcp_server.tools.workflow_analysis.tail_run_task_logs')
+async def test_get_run_progress_coarse_only(
+    mock_tail_run_task_logs, mock_get_omics_client, mock_context
+):
+    """Progress tool should degrade to coarse mode when detailed logs are unavailable."""
+    mock_omics_client = MagicMock()
+    mock_get_omics_client.return_value = mock_omics_client
+    mock_omics_client.get_run.return_value = {
+        'id': 'run-12345',
+        'name': 'demo-run',
+        'status': 'RUNNING',
+        'workflowId': 'wf-1',
+    }
+    mock_omics_client.list_run_tasks.return_value = {'items': []}
+    mock_tail_run_task_logs.return_value = {
+        'events': [],
+        'diagnostics': {'coarseOnly': True, 'notes': ['No detailed task logs were available']},
+    }
+
+    result = await get_run_progress(mock_context, run_id='run-12345', log_limit=20)
+
+    assert result['progress']['progressMode'] == 'coarse'
+    assert result['progress']['confidence'] == 'low'
+    assert result['progress']['percentComplete'] is None
     assert result['diagnostics']['coarseOnly'] is True
 
 
