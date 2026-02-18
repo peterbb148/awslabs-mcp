@@ -8,6 +8,8 @@ For the Healthomics/CloudWatch architecture boundary, see
 For structured telemetry contracts, see
 [docs/workflow-logging-schema.md](docs/workflow-logging-schema.md) and
 [docs/workflow-event-taxonomy.md](docs/workflow-event-taxonomy.md).
+For retention/redaction/query operations guidance, see
+[docs/logging-operations-policy.md](docs/logging-operations-policy.md).
 
 ## Overview
 
