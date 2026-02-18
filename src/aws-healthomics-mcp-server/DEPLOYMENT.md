@@ -116,6 +116,7 @@ Use:
 - `GetAHORunManifestLogs`
 - `GetAHOTaskLogs`
 - `TailAHORunTaskLogs`
+- `GetAHORunSummary`
 - `DiagnoseAHORunFailure`
 - `AnalyzeAHORunPerformance`
 

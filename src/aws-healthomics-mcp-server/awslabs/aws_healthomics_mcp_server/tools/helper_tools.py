@@ -79,6 +79,7 @@ Recommended sequence:
 - Verify workflow and run IDs exist and are accessible.
 - Check execution role permissions for S3, Logs, and Omics APIs.
 - Retrieve logs with:
+  - `GetAHORunSummary`
   - `GetAHORunLogs`
   - `GetAHORunManifestLogs`
   - `GetAHORunEngineLogs`

@@ -26,6 +26,7 @@ from awslabs.aws_healthomics_mcp_server.tools.workflow_analysis import (
     get_run_engine_logs,
     get_run_logs,
     get_run_manifest_logs,
+    get_run_summary,
     get_task_logs,
     tail_run_task_logs,
 )
@@ -245,6 +246,72 @@ async def test_tail_run_task_logs_coarse_fallback(
     assert result['events'] == []
     assert result['diagnostics']['coarseOnly'] is True
     assert 'No detailed task logs were available' in result['diagnostics']['notes'][0]
+
+
+@pytest.mark.asyncio
+@patch('awslabs.aws_healthomics_mcp_server.tools.workflow_analysis.get_omics_client')
+@patch('awslabs.aws_healthomics_mcp_server.tools.workflow_analysis.tail_run_task_logs')
+async def test_get_run_summary_success(mock_tail_run_task_logs, mock_get_omics_client, mock_context):
+    """Run summary should aggregate run/task metadata and recent logs."""
+    mock_omics_client = MagicMock()
+    mock_get_omics_client.return_value = mock_omics_client
+
+    mock_omics_client.get_run.return_value = {
+        'id': 'run-12345',
+        'name': 'demo-run',
+        'status': 'RUNNING',
+        'workflowId': 'wf-1',
+    }
+    mock_omics_client.list_run_tasks.return_value = {
+        'items': [{'taskId': 'task-1', 'name': 'StepA', 'status': 'RUNNING'}]
+    }
+    mock_tail_run_task_logs.return_value = {
+        'events': [
+            {
+                'timestamp': '2026-02-18T11:00:00Z',
+                'source': 'task',
+                'message': 'task started',
+            }
+        ],
+        'diagnostics': {'coarseOnly': False, 'notes': []},
+    }
+
+    result = await get_run_summary(mock_context, run_id='run-12345')
+
+    assert result['run']['id'] == 'run-12345'
+    assert result['taskCounts']['RUNNING'] == 1
+    assert result['logExcerpt'][0]['message'] == 'task started'
+    assert result['diagnostics']['coarseOnly'] is False
+
+
+@pytest.mark.asyncio
+@patch('awslabs.aws_healthomics_mcp_server.tools.workflow_analysis.get_omics_client')
+@patch('awslabs.aws_healthomics_mcp_server.tools.workflow_analysis.tail_run_task_logs')
+async def test_get_run_summary_coarse_fallback(
+    mock_tail_run_task_logs, mock_get_omics_client, mock_context
+):
+    """Run summary should remain usable when detailed logs are unavailable."""
+    mock_omics_client = MagicMock()
+    mock_get_omics_client.return_value = mock_omics_client
+
+    mock_omics_client.get_run.return_value = {
+        'id': 'run-12345',
+        'name': 'demo-run',
+        'status': 'COMPLETED',
+        'workflowId': 'wf-1',
+        'failureReason': None,
+    }
+    mock_omics_client.list_run_tasks.return_value = {'items': []}
+    mock_tail_run_task_logs.return_value = {
+        'events': [],
+        'diagnostics': {'coarseOnly': True, 'notes': ['No detailed task logs were available']},
+    }
+
+    result = await get_run_summary(mock_context, run_id='run-12345')
+
+    assert result['taskCounts']['RUNNING'] == 0
+    assert result['logExcerpt'] == []
+    assert result['diagnostics']['coarseOnly'] is True
 
 
 class TestGetRunManifestLogs:
