@@ -5,6 +5,9 @@ A Model Context Protocol (MCP) server that provides AI assistants with comprehen
 For workflow deployment steps, see [DEPLOYMENT.md](DEPLOYMENT.md).
 For the Healthomics/CloudWatch architecture boundary, see
 [docs/healthomics-cloudwatch-boundary.md](docs/healthomics-cloudwatch-boundary.md).
+For structured telemetry contracts, see
+[docs/workflow-logging-schema.md](docs/workflow-logging-schema.md) and
+[docs/workflow-event-taxonomy.md](docs/workflow-event-taxonomy.md).
 
 ## Overview
 
