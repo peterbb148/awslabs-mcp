@@ -9,6 +9,9 @@ Architecture note:
 See [docs/healthomics-cloudwatch-boundary.md](docs/healthomics-cloudwatch-boundary.md) for
 the decision on workflow-native user interfaces and internal HealthOmics+CloudWatch
 orchestration.
+For structured workflow telemetry contracts, see
+[docs/workflow-logging-schema.md](docs/workflow-logging-schema.md) and
+[docs/workflow-event-taxonomy.md](docs/workflow-event-taxonomy.md).
 
 ## What "deployment" means here
 
