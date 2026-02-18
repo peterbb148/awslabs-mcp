@@ -1,0 +1,161 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: API Gateway HTTP API and JWT authorizer for CloudWatch MCP Lambda.
+
+Parameters:
+  ApiName:
+    Type: String
+    Default: cloudwatch-mcp-api
+  StageName:
+    Type: String
+    Default: stable
+  LambdaFunctionArn:
+    Type: String
+    Description: ARN of the CloudWatch MCP Lambda function.
+  JwtIssuer:
+    Type: String
+    Description: Cognito issuer URL (for example https://cognito-idp.eu-west-1.amazonaws.com/<pool-id>).
+  JwtAudience:
+    Type: String
+    Description: Cognito app client ID used by ChatGPT connector.
+  AccessLogGroupArn:
+    Type: String
+    Description: ARN of an existing CloudWatch Logs log group for API Gateway access logs.
+
+Resources:
+  CloudWatchMcpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Ref ApiName
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowMethods:
+          - GET
+          - POST
+          - OPTIONS
+        AllowOrigins:
+          - '*'
+        AllowHeaders:
+          - Authorization
+          - Content-Type
+          - MCP-Session-Id
+
+  CloudWatchMcpIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref CloudWatchMcpApi
+      IntegrationType: AWS_PROXY
+      IntegrationMethod: POST
+      IntegrationUri: !Sub >-
+        arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunctionArn}/invocations
+      PayloadFormatVersion: '2.0'
+      TimeoutInMillis: 30000
+
+  CognitoJwtAuthorizer:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Properties:
+      ApiId: !Ref CloudWatchMcpApi
+      Name: cognito_jwt
+      AuthorizerType: JWT
+      IdentitySource:
+        - $request.header.Authorization
+      JwtConfiguration:
+        Issuer: !Ref JwtIssuer
+        Audience:
+          - !Ref JwtAudience
+
+  ProtectedRootRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CloudWatchMcpApi
+      RouteKey: ANY /
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoJwtAuthorizer
+      Target: !Sub integrations/${CloudWatchMcpIntegration}
+
+  ProtectedProxyRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CloudWatchMcpApi
+      RouteKey: ANY /{proxy+}
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoJwtAuthorizer
+      Target: !Sub integrations/${CloudWatchMcpIntegration}
+
+  OAuthWellKnownOpenIdRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CloudWatchMcpApi
+      RouteKey: GET /.well-known/openid-configuration
+      AuthorizationType: NONE
+      Target: !Sub integrations/${CloudWatchMcpIntegration}
+
+  OAuthWellKnownAuthorizationServerRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CloudWatchMcpApi
+      RouteKey: GET /.well-known/oauth-authorization-server
+      AuthorizationType: NONE
+      Target: !Sub integrations/${CloudWatchMcpIntegration}
+
+  OAuthWellKnownProxyRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CloudWatchMcpApi
+      RouteKey: GET /.well-known/{proxy+}
+      AuthorizationType: NONE
+      Target: !Sub integrations/${CloudWatchMcpIntegration}
+
+  RegisterRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CloudWatchMcpApi
+      RouteKey: POST /register
+      AuthorizationType: NONE
+      Target: !Sub integrations/${CloudWatchMcpIntegration}
+
+  CallbackRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CloudWatchMcpApi
+      RouteKey: ANY /callback
+      AuthorizationType: NONE
+      Target: !Sub integrations/${CloudWatchMcpIntegration}
+
+  LogoutRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CloudWatchMcpApi
+      RouteKey: ANY /logout
+      AuthorizationType: NONE
+      Target: !Sub integrations/${CloudWatchMcpIntegration}
+
+  CloudWatchMcpStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref CloudWatchMcpApi
+      StageName: !Ref StageName
+      AutoDeploy: true
+      DefaultRouteSettings:
+        DetailedMetricsEnabled: true
+        ThrottlingBurstLimit: 500
+        ThrottlingRateLimit: 1000
+      AccessLogSettings:
+        DestinationArn: !Ref AccessLogGroupArn
+        Format: >-
+          {"requestId":"$context.requestId","ip":"$context.identity.sourceIp","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","routeKey":"$context.routeKey","status":"$context.status","protocol":"$context.protocol","responseLength":"$context.responseLength"}
+
+  AllowApiGatewayInvokeLambda:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref LambdaFunctionArn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${CloudWatchMcpApi}/*/*/*
+
+Outputs:
+  ApiId:
+    Value: !Ref CloudWatchMcpApi
+  ApiEndpoint:
+    Value: !GetAtt CloudWatchMcpApi.ApiEndpoint
+  StageInvokeUrl:
+    Value: !Sub ${CloudWatchMcpApi.ApiEndpoint}/${StageName}
