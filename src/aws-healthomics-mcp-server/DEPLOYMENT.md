@@ -5,6 +5,11 @@
 This guide covers how to deploy workflow definitions to AWS HealthOmics using the
 `aws-healthomics-mcp-server` tools.
 
+Architecture note:
+See [docs/healthomics-cloudwatch-boundary.md](docs/healthomics-cloudwatch-boundary.md) for
+the decision on workflow-native user interfaces and internal HealthOmics+CloudWatch
+orchestration.
+
 ## What "deployment" means here
 
 For this server, deployment typically means:

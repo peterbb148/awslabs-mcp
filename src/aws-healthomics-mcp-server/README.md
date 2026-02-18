@@ -3,6 +3,8 @@
 A Model Context Protocol (MCP) server that provides AI assistants with comprehensive access to AWS HealthOmics services for genomic workflow management, execution, and analysis.
 
 For workflow deployment steps, see [DEPLOYMENT.md](DEPLOYMENT.md).
+For the Healthomics/CloudWatch architecture boundary, see
+[docs/healthomics-cloudwatch-boundary.md](docs/healthomics-cloudwatch-boundary.md).
 
 ## Overview
 
@@ -26,6 +28,8 @@ This MCP server provides tools for:
 - **Performance analysis**: Analyze workflow execution performance and resource utilization
 - **Failure diagnosis**: Comprehensive troubleshooting tools for failed workflow runs
 - **Log access**: Retrieve detailed logs from runs, engines, tasks, and manifests
+- **Hybrid monitoring model**: Workflow-native interfaces in this server, with CloudWatch details
+  resolved internally for users when needed
 
 ### 🌍 Region Management
 - **Multi-region support**: Get information about AWS regions where HealthOmics is available
