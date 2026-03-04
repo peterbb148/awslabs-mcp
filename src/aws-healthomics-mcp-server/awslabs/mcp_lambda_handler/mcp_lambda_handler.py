@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import asyncio
+import base64
 import functools
 import inspect
 import json
@@ -363,6 +364,25 @@ class MCPLambdaHandler:
 
         return {'statusCode': 200, 'body': response.model_dump_json(), 'headers': headers}
 
+    def _get_http_method(self, event: Dict[str, Any]) -> str:
+        """Extract HTTP method from API Gateway v1 or v2 proxy events."""
+        return (
+            event.get('httpMethod')
+            or event.get('requestContext', {}).get('http', {}).get('method')
+            or ''
+        ).upper()
+
+    def _parse_json_body(self, event: Dict[str, Any]) -> Dict[str, Any]:
+        """Parse request JSON body from API Gateway proxy event."""
+        raw_body = event.get('body')
+        if raw_body is None:
+            raise json.JSONDecodeError('Missing body', '', 0)
+
+        if event.get('isBase64Encoded'):
+            raw_body = base64.b64decode(raw_body).decode('utf-8')
+
+        return json.loads(raw_body)
+
     def handle_request(self, event: Dict, context: Any) -> Dict:
         """Handle an incoming Lambda request."""
         request_id = None
@@ -385,18 +405,20 @@ class MCPLambdaHandler:
                 current_session_id.set(None)
 
             # Check HTTP method for session deletion
-            if event.get('httpMethod') == 'DELETE' and session_id:
+            http_method = self._get_http_method(event)
+            if http_method == 'DELETE' and session_id:
                 if self.session_store.delete_session(session_id):
                     return {'statusCode': 204}
                 else:
                     return {'statusCode': 404}
 
             # Validate content type
-            if headers.get('content-type') != 'application/json':
+            content_type = headers.get('content-type', '')
+            if not content_type.startswith('application/json'):
                 return self._create_error_response(-32700, 'Unsupported Media Type')
 
             try:
-                body = json.loads(event['body'])
+                body = self._parse_json_body(event)
                 logger.debug(f'Parsed request body: {body}')
                 request_id = body.get('id') if isinstance(body, dict) else None
 
@@ -417,7 +439,7 @@ class MCPLambdaHandler:
                 ):
                     return self._create_error_response(-32700, 'Parse error', request_id)
 
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
                 return self._create_error_response(-32700, 'Parse error')
 
             # Parse and validate the request

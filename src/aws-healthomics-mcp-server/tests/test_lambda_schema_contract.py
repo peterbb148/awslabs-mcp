@@ -112,3 +112,41 @@ def test_readonly_hint_annotations_for_read_and_write_tools():
     assert start_schema['annotations']['readOnlyHint'] is False
     assert cancel_schema['annotations']['readOnlyHint'] is False
     assert tail_schema['annotations']['readOnlyHint'] is True
+
+
+def test_missing_body_returns_parse_error_not_500():
+    """Missing request body should return JSON-RPC parse error instead of 500."""
+    handler = MCPLambdaHandler('test-server')
+    event = {
+        'requestContext': {'http': {'method': 'POST'}},
+        'headers': {'content-type': 'application/json'},
+    }
+
+    response = handler.handle_request(event, context=None)
+    payload = json.loads(response['body'])
+
+    assert response['statusCode'] == 400
+    assert payload['error']['code'] == -32700
+    assert payload['error']['message'] == 'Parse error'
+
+
+def test_content_type_with_charset_is_accepted():
+    """application/json content type with charset should be treated as JSON."""
+    handler = MCPLambdaHandler('test-server')
+
+    @handler.tool()
+    def ping() -> dict:
+        return {'ok': True}
+
+    event = {
+        'requestContext': {'http': {'method': 'POST'}},
+        'headers': {'content-type': 'application/json; charset=utf-8'},
+        'body': json.dumps({'jsonrpc': '2.0', 'id': '1', 'method': 'tools/list'}),
+    }
+
+    response = handler.handle_request(event, context=None)
+    payload = json.loads(response['body'])
+
+    assert response['statusCode'] == 200
+    assert 'result' in payload
+    assert 'tools' in payload['result']

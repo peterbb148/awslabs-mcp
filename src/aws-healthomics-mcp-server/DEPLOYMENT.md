@@ -266,6 +266,18 @@ Public (no auth) routes:
 - Logout URL:
   - `https://osgs2j07zf.execute-api.eu-west-1.amazonaws.com/stable/logout`
 
+## ChatGPT Connector refresh behavior
+
+OpenAI currently snapshots the connector tool surface at publish time. After deploying
+new server code or changing tool schemas, do all of the following in ChatGPT Apps:
+
+1. Open the connector in Apps and click **Refresh**.
+2. Re-publish the connector/app.
+3. Reconnect the app in the chat if the old schema still appears.
+
+If this is skipped, clients may continue using a stale tool list/schema even when the
+Lambda deployment is already updated.
+
 ## Common deployment failures
 
 1. `AccessDenied` on workflow/run creation:
@@ -297,3 +309,6 @@ Public (no auth) routes:
 12. Client cannot stop runs from MCP:
    Verify `CancelAHORun` appears in `tools/list` and that the deployed image includes
    issue #16 changes. If missing, redeploy the latest Lambda image.
+13. ChatGPT still shows old tools/schemas after deploy:
+   This is usually connector snapshot staleness. Refresh and re-publish the connector
+   in ChatGPT Apps, then reconnect in the chat.
