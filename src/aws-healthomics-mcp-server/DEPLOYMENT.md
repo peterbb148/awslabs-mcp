@@ -231,8 +231,8 @@ February 13, 2026.
 
 JWT-protected routes:
 
-- `ANY /`
-- `ANY /{proxy+}`
+- `ANY /` (optional in mixed-auth mode; see below)
+- `ANY /{proxy+}` (optional in mixed-auth mode; see below)
 
 Public (no auth) routes:
 
@@ -242,6 +242,18 @@ Public (no auth) routes:
 - `POST /register`
 - `ANY /callback`
 - `ANY /logout`
+
+### Mixed-auth mode for ChatGPT action discovery
+
+If ChatGPT shows "No actions are available for this app" even though OAuth discovery works,
+enable mixed-auth behavior:
+
+1. API Gateway `ANY /` and `ANY /{proxy+}` routes use `AuthorizationType=NONE`.
+2. Lambda MCP handler enforces auth only for `tools/call`.
+3. `initialize` and `tools/list` remain unauthenticated so connector action discovery succeeds.
+
+This preserves read of the tool catalog during connector registration while keeping actual
+tool execution protected by OAuth bearer validation.
 
 ### JWT authorizer
 
@@ -277,6 +289,80 @@ new server code or changing tool schemas, do all of the following in ChatGPT App
 
 If this is skipped, clients may continue using a stale tool list/schema even when the
 Lambda deployment is already updated.
+
+## March 2026 connector compatibility updates
+
+The deployment now includes compatibility hardening for ChatGPT Apps connector discovery
+and OAuth integration.
+
+### 1) MCP path contract
+
+- OAuth metadata endpoints are served under stage root:
+  - `https://<api-id>.execute-api.<region>.amazonaws.com/<stage>/.well-known/oauth-authorization-server`
+  - `https://<api-id>.execute-api.<region>.amazonaws.com/<stage>/.well-known/openid-configuration`
+- JSON-RPC MCP endpoint is served at:
+  - `https://<api-id>.execute-api.<region>.amazonaws.com/<stage>/mcp`
+
+If the connector is pointed at `/stable` (without `/mcp` support in server path resolution),
+tool discovery can fail or show no actions.
+
+### 2) Mixed-auth discovery model
+
+To support connector action discovery while keeping tool execution protected:
+
+1. API Gateway `ANY /` and `ANY /{proxy+}` are set to `AuthorizationType=NONE`.
+2. Lambda MCP handler enforces OAuth bearer auth for `tools/call`.
+3. `initialize` and `tools/list` stay unauthenticated.
+
+Expected behavior:
+
+- `initialize` succeeds without token.
+- `tools/list` succeeds without token and returns full tool catalog.
+- `tools/call` without bearer token returns unauthorized.
+
+### 3) OAuth metadata completeness
+
+Deployment includes extended discovery metadata required by strict clients:
+
+- `userinfo_endpoint`
+- `revocation_endpoint`
+- `jwks_uri`
+- `id_token_signing_alg_values_supported`
+- `subject_types_supported`
+
+### 4) Cognito callback URL operations
+
+ChatGPT Apps can generate a new callback URL on reconnect. The Cognito app client callback
+list must include the newly issued URL before creating or reconnecting the app.
+
+Operational notes:
+
+- Keep `https://chatgpt.com/connector_platform_oauth_redirect` in callbacks.
+- Add the latest `https://chatgpt.com/connector/oauth/<id>` URL when reconnecting.
+- If dynamic registration is unstable, set OAuth Client ID explicitly in ChatGPT App setup.
+
+### 5) Connector verification checklist
+
+After deploy and reconnect, verify all of the following:
+
+1. ChatGPT App "Actions" count is non-zero and tool list is visible.
+2. `tools/list` includes expected operations (for example `CancelAHORun`,
+   `ListAHOReferenceStores`, `GetAHOServerManual`).
+3. `StartAHORun` schema marks only core fields as required:
+   `workflow_id`, `role_arn`, `name`, `output_uri`.
+4. `SearchGenomicsFiles.search_terms` is `array[string]`.
+5. `CancelAHORun` is callable from connector.
+
+### 6) Fast triage for "No actions available"
+
+If ChatGPT still shows "No actions are available for this app":
+
+1. Confirm MCP server URL in app matches the deployed stage base URL.
+2. Confirm JSON-RPC path resolution reaches `/mcp` on the backend.
+3. Refresh actions in ChatGPT Apps and republish.
+4. Reconnect app to regenerate OAuth callback, then add that callback to Cognito.
+5. Validate OAuth discovery endpoint returns complete metadata.
+6. Validate `tools/list` over HTTP directly against `/mcp`.
 
 ## Common deployment failures
 

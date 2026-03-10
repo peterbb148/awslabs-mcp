@@ -25,6 +25,7 @@ from typing import Any, Dict, List, Optional, Union
 
 from awslabs.mcp_lambda_handler import MCPLambdaHandler
 from loguru import logger
+from jwt import InvalidTokenError, PyJWKClient, decode as jwt_decode
 
 # Import version info
 from awslabs.aws_healthomics_mcp_server import __version__
@@ -119,6 +120,14 @@ def get_oauth_config() -> Dict[str, str]:
             'OAUTH_TOKEN_ENDPOINT',
             'https://carlsberg-healthomics-auth.auth.eu-west-1.amazoncognito.com/oauth2/token'
         ),
+        'userinfo_endpoint': os.environ.get(
+            'OAUTH_USERINFO_ENDPOINT',
+            'https://carlsberg-healthomics-auth.auth.eu-west-1.amazoncognito.com/oauth2/userInfo'
+        ),
+        'revocation_endpoint': os.environ.get(
+            'OAUTH_REVOCATION_ENDPOINT',
+            'https://carlsberg-healthomics-auth.auth.eu-west-1.amazoncognito.com/oauth2/revoke'
+        ),
         'client_id': os.environ.get(
             'OAUTH_CLIENT_ID',
             '6r52ekr37jn84nlusjgn6j7f8m'
@@ -148,11 +157,16 @@ def get_oauth_metadata(base_url: str = '') -> Dict[str, Any]:
         'issuer': config['issuer'],
         'authorization_endpoint': config['authorization_endpoint'],
         'token_endpoint': config['token_endpoint'],
+        'userinfo_endpoint': config['userinfo_endpoint'],
+        'revocation_endpoint': config['revocation_endpoint'],
+        'jwks_uri': f'{config["issuer"].rstrip("/")}/.well-known/jwks.json',
         'response_types_supported': ['code'],
         'grant_types_supported': ['authorization_code', 'refresh_token'],
         'code_challenge_methods_supported': ['S256'],
         'token_endpoint_auth_methods_supported': ['none', 'client_secret_post'],
         'scopes_supported': ['openid', 'email', 'profile'],
+        'id_token_signing_alg_values_supported': ['RS256'],
+        'subject_types_supported': ['public'],
     }
 
     # Add registration endpoint for RFC 7591 Dynamic Client Registration
@@ -224,7 +238,26 @@ def handle_dynamic_client_registration(event: Dict[str, Any]) -> Optional[Dict[s
     return None
 
 
-def get_base_url(event: Dict[str, Any]) -> str:
+def _extract_mount_prefix(path: str) -> str:
+    """Extract optional mount prefix (for example `/mcp`) from request path."""
+    if not path:
+        return ''
+
+    suffixes = [
+        '/.well-known/oauth-authorization-server',
+        '/.well-known/openid-configuration',
+        '/register',
+        '/callback',
+        '/logout',
+    ]
+    for suffix in suffixes:
+        if path.endswith(suffix):
+            prefix = path[: -len(suffix)]
+            return prefix if prefix and prefix != '/' else ''
+    return ''
+
+
+def get_base_url(event: Dict[str, Any], path: str = '') -> str:
     """Extract base URL from the Lambda event.
 
     Args:
@@ -236,27 +269,31 @@ def get_base_url(event: Dict[str, Any]) -> str:
     # Try to get from requestContext (API Gateway v2)
     request_context = event.get('requestContext', {})
 
+    mount_prefix = _extract_mount_prefix(path)
+
     # API Gateway HTTP API (v2)
     if 'domainName' in request_context:
         domain = request_context['domainName']
         stage = request_context.get('stage', '')
+        base = f'https://{domain}'
         if stage and stage != '$default':
-            return f'https://{domain}/{stage}'
-        return f'https://{domain}'
+            base = f'{base}/{stage}'
+        return f'{base}{mount_prefix}'
 
     # API Gateway REST API (v1)
     if 'domain_name' in request_context:
         domain = request_context['domain_name']
         stage = request_context.get('stage', '')
+        base = f'https://{domain}'
         if stage:
-            return f'https://{domain}/{stage}'
-        return f'https://{domain}'
+            base = f'{base}/{stage}'
+        return f'{base}{mount_prefix}'
 
     # Fallback to headers
     headers = event.get('headers', {})
     host = headers.get('Host') or headers.get('host', '')
     if host:
-        return f'https://{host}'
+        return f'https://{host}{mount_prefix}'
 
     return ''
 
@@ -272,7 +309,7 @@ def handle_oauth_discovery(event: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
     # Get the path from the event
     path = event.get('path', '') or event.get('rawPath', '')
-    base_url = get_base_url(event)
+    base_url = get_base_url(event, path)
 
     # Check for OAuth discovery endpoints
     if path.endswith('/.well-known/oauth-authorization-server') or \
@@ -309,10 +346,79 @@ def handle_oauth_discovery(event: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return None
 
 
+_JWKS_CLIENT: Optional[PyJWKClient] = None
+
+
+def _get_jwks_client() -> PyJWKClient:
+    """Get cached JWK client for Cognito issuer."""
+    global _JWKS_CLIENT
+
+    if _JWKS_CLIENT is not None:
+        return _JWKS_CLIENT
+
+    issuer = get_oauth_config()['issuer'].rstrip('/')
+    jwks_url = f'{issuer}/.well-known/jwks.json'
+    _JWKS_CLIENT = PyJWKClient(jwks_url)
+    return _JWKS_CLIENT
+
+
+def authorize_mcp_tool_call(event: Dict[str, Any], headers: Dict[str, str]) -> Optional[str]:
+    """Authorize `tools/call` requests while allowing discovery without auth.
+
+    Returns:
+        None when authorized, otherwise an error message.
+    """
+    # If API Gateway authorizer already validated JWT, trust those claims.
+    claims = (
+        event.get('requestContext', {})
+        .get('authorizer', {})
+        .get('jwt', {})
+        .get('claims', {})
+    )
+    if claims:
+        return None
+
+    auth_header = headers.get('authorization', '')
+    if not auth_header.startswith('Bearer '):
+        return 'Unauthorized: Bearer token required for tools/call'
+
+    token = auth_header[len('Bearer ') :].strip()
+    if not token:
+        return 'Unauthorized: Bearer token required for tools/call'
+
+    config = get_oauth_config()
+    issuer = config['issuer'].rstrip('/')
+    client_id = config['client_id']
+
+    try:
+        signing_key = _get_jwks_client().get_signing_key_from_jwt(token)
+        decoded = jwt_decode(
+            token,
+            signing_key.key,
+            algorithms=['RS256'],
+            issuer=issuer,
+            options={'verify_aud': False},
+        )
+    except InvalidTokenError as exc:
+        logger.warning(f'JWT validation failed for tools/call: {exc}')
+        return 'Unauthorized: invalid bearer token'
+    except Exception as exc:
+        logger.warning(f'JWT verification error for tools/call: {exc}')
+        return 'Unauthorized: invalid bearer token'
+
+    token_audience = decoded.get('aud')
+    token_client_id = decoded.get('client_id')
+    if token_audience != client_id and token_client_id != client_id:
+        return 'Unauthorized: token audience/client mismatch'
+
+    return None
+
+
 # Create the MCP Lambda handler instance (stateless)
 mcp = MCPLambdaHandler(
     name='awslabs.aws-healthomics-mcp-server',
     version=__version__,
+    authorize_tool_call=authorize_mcp_tool_call,
 )
 
 def _register_lambda_tool(tool_name: str, tool_fn: Any) -> None:

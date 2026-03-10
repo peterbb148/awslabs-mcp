@@ -10,6 +10,9 @@ For structured telemetry contracts, see
 [docs/workflow-event-taxonomy.md](docs/workflow-event-taxonomy.md).
 For retention/redaction/query operations guidance, see
 [docs/logging-operations-policy.md](docs/logging-operations-policy.md).
+For ChatGPT Apps connector operations (OAuth callbacks, action discovery, `/mcp` path,
+mixed-auth model, and "No actions available" triage), see
+[DEPLOYMENT.md#march-2026-connector-compatibility-updates](DEPLOYMENT.md#march-2026-connector-compatibility-updates).
 
 ## Overview
 

@@ -150,3 +150,35 @@ def test_content_type_with_charset_is_accepted():
     assert response['statusCode'] == 200
     assert 'result' in payload
     assert 'tools' in payload['result']
+
+
+def test_tools_call_can_be_authorized_with_callback():
+    """tools/call should honor authorize_tool_call callback."""
+    handler = MCPLambdaHandler(
+        'test-server',
+        authorize_tool_call=lambda _event, _headers: 'Unauthorized: Bearer token required for tools/call',
+    )
+
+    @handler.tool()
+    def ping() -> dict:
+        return {'ok': True}
+
+    event = {
+        'requestContext': {'http': {'method': 'POST'}},
+        'headers': {'content-type': 'application/json'},
+        'body': json.dumps(
+            {
+                'jsonrpc': '2.0',
+                'id': '3',
+                'method': 'tools/call',
+                'params': {'name': 'ping', 'arguments': {}},
+            }
+        ),
+    }
+
+    response = handler.handle_request(event, context=None)
+    payload = json.loads(response['body'])
+
+    assert response['statusCode'] == 401
+    assert payload['error']['code'] == -32001
+    assert 'Unauthorized' in payload['error']['message']

@@ -84,6 +84,7 @@ class MCPLambdaHandler:
         name: str,
         version: str = '1.0.0',
         session_store: Optional[Union[SessionStore, str]] = None,
+        authorize_tool_call: Optional[Callable[[Dict[str, Any], Dict[str, str]], Optional[str]]] = None,
     ):
         """Initialize the MCP handler.
 
@@ -94,12 +95,16 @@ class MCPLambdaHandler:
                          - None for no sessions
                          - A SessionStore instance
                          - A string for DynamoDB table name (for backwards compatibility)
+            authorize_tool_call: Optional authorization callback for `tools/call`.
+                         Receives raw event and normalized headers, returns
+                         None when authorized or an error message when denied.
 
         """
         self.name = name
         self.version = version
         self.tools: Dict[str, Dict] = {}
         self.tool_implementations: Dict[str, Callable] = {}
+        self.authorize_tool_call = authorize_tool_call
 
         # Configure session storage
         if session_store is None:
@@ -482,6 +487,17 @@ class MCPLambdaHandler:
 
             # Handle tool calls
             if request.method == 'tools/call' and request.params:
+                if self.authorize_tool_call:
+                    auth_error = self.authorize_tool_call(event, headers)
+                    if auth_error:
+                        return self._create_error_response(
+                            -32001,
+                            auth_error,
+                            request.id,
+                            status_code=401,
+                            session_id=session_id,
+                        )
+
                 tool_name = request.params.get('name')
                 tool_args = request.params.get('arguments', {})
 
