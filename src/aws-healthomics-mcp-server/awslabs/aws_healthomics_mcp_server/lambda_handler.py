@@ -243,12 +243,17 @@ def _extract_mount_prefix(path: str) -> str:
     if not path:
         return ''
 
+    if '/mcp/' in path:
+        prefix = path.split('/mcp/', 1)[0]
+        return prefix if prefix and prefix != '/' else ''
+
     suffixes = [
         '/.well-known/oauth-authorization-server',
         '/.well-known/openid-configuration',
         '/register',
         '/callback',
         '/logout',
+        '/mcp',
     ]
     for suffix in suffixes:
         if path.endswith(suffix):
@@ -266,34 +271,42 @@ def get_base_url(event: Dict[str, Any], path: str = '') -> str:
     Returns:
         Base URL string (e.g., https://api.example.com/stage)
     """
+    explicit_base_url = os.environ.get('MCP_SERVER_BASE_URL', '').strip()
+    if explicit_base_url:
+        return explicit_base_url.rstrip('/')
+
     # Try to get from requestContext (API Gateway v2)
     request_context = event.get('requestContext', {})
-
     mount_prefix = _extract_mount_prefix(path)
+    stage = request_context.get('stage', '')
+    stage_prefix = f'/{stage}' if stage and stage != '$default' else ''
+
+    def _normalize_base(base: str) -> str:
+        if mount_prefix:
+            if stage_prefix and (
+                mount_prefix == stage_prefix or mount_prefix.startswith(f'{stage_prefix}/')
+            ):
+                return f'{base}{mount_prefix}'
+            if stage_prefix:
+                return f'{base}{stage_prefix}{mount_prefix}'
+            return f'{base}{mount_prefix}'
+        if stage_prefix:
+            return f'{base}{stage_prefix}'
+        return base
+
+    headers = event.get('headers', {})
+    host = headers.get('Host') or headers.get('host', '')
+    scheme = headers.get('X-Forwarded-Proto') or headers.get('x-forwarded-proto') or 'https'
+    if host:
+        return _normalize_base(f'{scheme}://{host}')
 
     # API Gateway HTTP API (v2)
     if 'domainName' in request_context:
-        domain = request_context['domainName']
-        stage = request_context.get('stage', '')
-        base = f'https://{domain}'
-        if stage and stage != '$default':
-            base = f'{base}/{stage}'
-        return f'{base}{mount_prefix}'
+        return _normalize_base(f'https://{request_context["domainName"]}')
 
     # API Gateway REST API (v1)
     if 'domain_name' in request_context:
-        domain = request_context['domain_name']
-        stage = request_context.get('stage', '')
-        base = f'https://{domain}'
-        if stage:
-            base = f'{base}/{stage}'
-        return f'{base}{mount_prefix}'
-
-    # Fallback to headers
-    headers = event.get('headers', {})
-    host = headers.get('Host') or headers.get('host', '')
-    if host:
-        return f'https://{host}{mount_prefix}'
+        return _normalize_base(f'https://{request_context["domain_name"]}')
 
     return ''
 
