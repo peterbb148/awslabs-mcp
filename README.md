@@ -1,3 +1,11 @@
+# Historical HealthOmics fork notice
+
+This personal fork is no longer the active development location for the Carlsberg HealthOmics MCP server. Active HealthOmics MCP development has moved to [https://github.com/CarlsbergGBS/crl-sc-healthomics-mcp](https://github.com/CarlsbergGBS/crl-sc-healthomics-mcp).
+
+Use this fork only as historical provenance for earlier AWS Labs monorepo work and closed upstream contributions. Do not use it for current HealthOmics installation guidance, issues, or pull requests.
+
+---
+
 # AWS MCP Servers
 
 A suite of specialized MCP servers that help you get the most out of AWS, wherever you use MCP.
